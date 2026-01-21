@@ -1,0 +1,2433 @@
+import React, { useState, useEffect } from 'react';
+
+export default function FlashcardApp() {
+  const [decks, setDecks] = useState(() => {
+    const saved = localStorage.getItem('flashcardDecks');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentView, setCurrentView] = useState('home');
+  const [currentDeckId, setCurrentDeckId] = useState(null);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+  
+  // Form states
+  const [deckName, setDeckName] = useState('');
+  const [deckDescription, setDeckDescription] = useState('');
+  const [frontText, setFrontText] = useState('');
+  const [backText, setBackText] = useState('');
+  const [frontImage, setFrontImage] = useState(null);
+  const [backImage, setBackImage] = useState(null);
+  const [showFrontPasteArea, setShowFrontPasteArea] = useState(false);
+  const [showBackPasteArea, setShowBackPasteArea] = useState(false);
+  const [showFrontUrlInput, setShowFrontUrlInput] = useState(false);
+  const [showBackUrlInput, setShowBackUrlInput] = useState(false);
+  const [editingCardId, setEditingCardId] = useState(null);
+  const [frontImageError, setFrontImageError] = useState(false);
+  const [backImageError, setBackImageError] = useState(false);
+  const [deletedCard, setDeletedCard] = useState(null);
+  const [undoTimer, setUndoTimer] = useState(null);
+  const [studyStats, setStudyStats] = useState({ correct: 0, incorrect: 0 });
+  const [showStatsView, setShowStatsView] = useState(false);
+  const [selectedCardsForCopy, setSelectedCardsForCopy] = useState([]);
+  const [showCopyModal, setShowCopyModal] = useState(false);
+  const [markedCardsInSession, setMarkedCardsInSession] = useState(new Set());
+  const [currentSessionData, setCurrentSessionData] = useState({});
+  const [showHistoryView, setShowHistoryView] = useState(false);
+  const [showDeckMenu, setShowDeckMenu] = useState(null);
+  const [viewingDeckStats, setViewingDeckStats] = useState(null);
+  const [sessionFilter, setSessionFilter] = useState('all'); // 'all' or individual session id
+  const [showFinishSessionModal, setShowFinishSessionModal] = useState(false);
+  const [showClearAllModal, setShowClearAllModal] = useState(false);
+  const [deckToClearing, setDeckToClearing] = useState(null);
+  const [showClearStatsModal, setShowClearStatsModal] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : false;
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  const [availableTags, setAvailableTags] = useState(() => {
+    const saved = localStorage.getItem('availableTags');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [selectedTagsForCard, setSelectedTagsForCard] = useState([]);
+  const [filterByTags, setFilterByTags] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDeckId, setExportDeckId] = useState(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const [showProgressDashboard, setShowProgressDashboard] = useState(false);
+  useEffect(() => {
+    localStorage.setItem('flashcardDecks', JSON.stringify(decks));
+  }, [decks]);
+
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('availableTags', JSON.stringify(availableTags));
+  }, [availableTags]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (currentView === 'study') {
+        if (e.key === 'ArrowLeft') prevCard();
+        else if (e.key === 'ArrowRight') nextCard();
+        else if (e.key === ' ') {
+          e.preventDefault();
+          setIsFlipped(!isFlipped);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentView, currentCardIndex, isFlipped]);
+
+  const createDeck = () => {
+    if (!deckName.trim()) {
+      alert('Please enter a deck name');
+      return;
+    }
+    const newDeck = {
+      id: Date.now(),
+      name: deckName,
+      description: deckDescription,
+      cards: [],
+      sessions: [], // Track study sessions
+      createdAt: new Date().toISOString()
+    };
+    setDecks([...decks, newDeck]);
+    setDeckName('');
+    setDeckDescription('');
+    setCurrentView('home');
+  };
+
+  const deleteDeck = (deckId) => {
+    if (confirm('Are you sure you want to delete this deck?')) {
+      setDecks(decks.filter(d => d.id !== deckId));
+    }
+  };
+
+  const handlePasteEvent = (e, side) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (side === 'front') {
+            setFrontImage(event.target.result);
+            setShowFrontPasteArea(false);
+          } else {
+            setBackImage(event.target.result);
+            setShowBackPasteArea(false);
+          }
+        };
+        reader.readAsDataURL(blob);
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
+  const handleImageUpload = (side, type, e) => {
+    if (type === 'file') {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (side === 'front') setFrontImage(e.target.result);
+          else setBackImage(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const addCard = () => {
+    if (!frontText.trim() && !frontImage) {
+      alert('Please add text or an image to the front of the card');
+      return;
+    }
+    if (!backText.trim() && !backImage) {
+      alert('Please add text or an image to the back of the card');
+      return;
+    }
+
+    const updatedDecks = decks.map(deck => {
+      if (deck.id === currentDeckId) {
+        if (editingCardId) {
+          // Edit existing card
+          return {
+            ...deck,
+            cards: deck.cards.map(card => 
+              card.id === editingCardId
+                ? { 
+                    id: editingCardId, 
+                    frontText, 
+                    backText, 
+                    frontImage, 
+                    backImage,
+                    stats: card.stats || { correct: 0, incorrect: 0 },
+                    // Preserve spaced repetition data
+                    repetitionData: card.repetitionData || {
+                      easeFactor: 2.5,
+                      interval: 0,
+                      nextReviewDate: new Date().toISOString(),
+                      reviewCount: 0
+                    }
+                  }
+                : card
+            )
+          };
+        } else {
+          // Add new card with spaced repetition data
+          const newCard = {
+            id: Date.now(),
+            frontText,
+            backText,
+            frontImage,
+            backImage,
+            stats: { correct: 0, incorrect: 0 },
+            repetitionData: {
+              easeFactor: 2.5,
+              interval: 0,
+              nextReviewDate: new Date().toISOString(),
+              reviewCount: 0
+            }
+          };
+          return {
+            ...deck,
+            cards: [...deck.cards, newCard]
+          };
+        }
+      }
+      return deck;
+    });
+    
+    setDecks(updatedDecks);
+    setEditingCardId(null);
+    clearCardEditor();
+  };
+
+  const deleteCard = (cardId) => {
+    const deck = decks.find(d => d.id === currentDeckId);
+    const cardToDelete = deck.cards.find(c => c.id === cardId);
+    
+    // Clear any existing undo timer
+    if (undoTimer) {
+      clearTimeout(undoTimer);
+    }
+    
+    // Store the deleted card
+    setDeletedCard({ card: cardToDelete, deckId: currentDeckId });
+    
+    // Delete the card
+    const updatedDecks = decks.map(d => {
+      if (d.id === currentDeckId) {
+        return {
+          ...d,
+          cards: d.cards.filter(c => c.id !== cardId)
+        };
+      }
+      return d;
+    });
+    setDecks(updatedDecks);
+    
+    // Set timer to clear undo after 10 seconds
+    const timer = setTimeout(() => {
+      setDeletedCard(null);
+    }, 10000);
+    setUndoTimer(timer);
+  };
+
+  const undoDelete = () => {
+    if (deletedCard) {
+      // Clear the timer
+      if (undoTimer) {
+        clearTimeout(undoTimer);
+      }
+      
+      // Restore the card
+      const updatedDecks = decks.map(deck => {
+        if (deck.id === deletedCard.deckId) {
+          return {
+            ...deck,
+            cards: [...deck.cards, deletedCard.card]
+          };
+        }
+        return deck;
+      });
+      setDecks(updatedDecks);
+      setDeletedCard(null);
+      setUndoTimer(null);
+    }
+  };
+
+  const editCard = (card) => {
+    setFrontText(card.frontText || '');
+    setBackText(card.backText || '');
+    setFrontImage(card.frontImage || null);
+    setBackImage(card.backImage || null);
+    setEditingCardId(card.id);
+    // Scroll to top of editor
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const clearCardEditor = () => {
+    setFrontText('');
+    setBackText('');
+    setFrontImage(null);
+    setBackImage(null);
+    setShowFrontUrlInput(false);
+    setShowBackUrlInput(false);
+    setShowFrontPasteArea(false);
+    setShowBackPasteArea(false);
+    setEditingCardId(null);
+    setFrontImageError(false);
+    setBackImageError(false);
+  };
+
+  const showStudy = (deckId) => {
+    const deck = decks.find(d => d.id === deckId);
+    if (!deck.cards || deck.cards.length === 0) {
+      alert('This deck has no cards yet! Add some cards first.');
+      return;
+    }
+
+    // Sort cards by spaced repetition - cards due for review first
+    const sortedCards = [...deck.cards].sort((a, b) => {
+      const aDate = new Date(a.repetitionData?.nextReviewDate || new Date());
+      const bDate = new Date(b.repetitionData?.nextReviewDate || new Date());
+      const now = new Date();
+      
+      // Cards due now come first
+      const aDue = aDate <= now;
+      const bDue = bDate <= now;
+      
+      if (aDue && !bDue) return -1;
+      if (!aDue && bDue) return 1;
+      
+      // Both due or both not due - sort by date
+      return aDate - bDate;
+    });
+
+    // Update deck with sorted cards
+    const updatedDecks = decks.map(d => {
+      if (d.id === deckId) {
+        return { ...d, cards: sortedCards };
+      }
+      return d;
+    });
+    setDecks(updatedDecks);
+
+    setCurrentDeckId(deckId);
+    setCurrentCardIndex(0);
+    setIsFlipped(false);
+    setStudyStats({ correct: 0, incorrect: 0 });
+    setMarkedCardsInSession(new Set());
+    
+    // Initialize session data for each card
+    const sessionData = {};
+    sortedCards.forEach(card => {
+      sessionData[card.id] = { correct: 0, incorrect: 0 };
+    });
+    setCurrentSessionData(sessionData);
+    
+    setCurrentView('study');
+  };
+
+  const shuffleCards = () => {
+    const deck = decks.find(d => d.id === currentDeckId);
+    const shuffled = [...deck.cards];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    deck.cards = shuffled;
+    setDecks([...decks]);
+    setCurrentCardIndex(0);
+    setIsFlipped(false);
+    setMarkedCardsInSession(new Set()); // Clear marks for new cycle
+  };
+
+  const nextCard = () => {
+    const deck = decks.find(d => d.id === currentDeckId);
+    if (currentCardIndex < deck.cards.length - 1) {
+      setCurrentCardIndex(currentCardIndex + 1);
+      setIsFlipped(false);
+    }
+  };
+
+  const prevCard = () => {
+    if (currentCardIndex > 0) {
+      setCurrentCardIndex(currentCardIndex - 1);
+      setIsFlipped(false);
+    }
+  };
+
+  const markCorrect = () => {
+    const deck = decks.find(d => d.id === currentDeckId);
+    const currentCard = deck.cards[currentCardIndex];
+    
+    // Check if this specific card has been marked in this session
+    if (markedCardsInSession.has(currentCard.id)) return;
+    
+    // Mark this card as marked in this session
+    const newMarkedSet = new Set(markedCardsInSession);
+    newMarkedSet.add(currentCard.id);
+    setMarkedCardsInSession(newMarkedSet);
+    
+    setStudyStats({ ...studyStats, correct: studyStats.correct + 1 });
+    
+    // Update session data for this card
+    const updatedSessionData = {
+      ...currentSessionData,
+      [currentCard.id]: {
+        correct: (currentSessionData[currentCard.id]?.correct || 0) + 1,
+        incorrect: currentSessionData[currentCard.id]?.incorrect || 0
+      }
+    };
+    setCurrentSessionData(updatedSessionData);
+    
+    // Update spaced repetition data using SM-2 algorithm
+    const repetitionData = currentCard.repetitionData || {
+      easeFactor: 2.5,
+      interval: 0,
+      nextReviewDate: new Date().toISOString(),
+      reviewCount: 0
+    };
+
+    let newInterval;
+    let newEaseFactor = repetitionData.easeFactor;
+
+    if (repetitionData.reviewCount === 0) {
+      newInterval = 1; // 1 day
+    } else if (repetitionData.reviewCount === 1) {
+      newInterval = 6; // 6 days
+    } else {
+      newInterval = Math.round(repetitionData.interval * repetitionData.easeFactor);
+    }
+
+    // Increase ease factor slightly for correct answer
+    newEaseFactor = Math.max(1.3, repetitionData.easeFactor + 0.1);
+
+    const nextReviewDate = new Date();
+    nextReviewDate.setDate(nextReviewDate.getDate() + newInterval);
+
+    // Track at card level with spaced repetition
+    const updatedDecks = decks.map(d => {
+      if (d.id === currentDeckId) {
+        return {
+          ...d,
+          cards: d.cards.map((card, idx) => {
+            if (idx === currentCardIndex) {
+              return {
+                ...card,
+                stats: {
+                  correct: (card.stats?.correct || 0) + 1,
+                  incorrect: card.stats?.incorrect || 0
+                },
+                repetitionData: {
+                  easeFactor: newEaseFactor,
+                  interval: newInterval,
+                  nextReviewDate: nextReviewDate.toISOString(),
+                  reviewCount: repetitionData.reviewCount + 1
+                }
+              };
+            }
+            return card;
+          })
+        };
+      }
+      return d;
+    });
+    setDecks(updatedDecks);
+    
+    // Check if this was the last card
+    if (currentCardIndex >= deck.cards.length - 1) {
+      // Last card - save session and shuffle
+      saveSession(updatedSessionData);
+      setTimeout(() => {
+        shuffleCards();
+      }, 1000);
+    } else {
+      // Move to next card
+      setTimeout(() => {
+        nextCard();
+      }, 500);
+    }
+  };
+
+  const markIncorrect = () => {
+    const deck = decks.find(d => d.id === currentDeckId);
+    const currentCard = deck.cards[currentCardIndex];
+    
+    // Check if this specific card has been marked in this session
+    if (markedCardsInSession.has(currentCard.id)) return;
+    
+    // Mark this card as marked in this session
+    const newMarkedSet = new Set(markedCardsInSession);
+    newMarkedSet.add(currentCard.id);
+    setMarkedCardsInSession(newMarkedSet);
+    
+    setStudyStats({ ...studyStats, incorrect: studyStats.incorrect + 1 });
+    
+    // Update session data for this card
+    const updatedSessionData = {
+      ...currentSessionData,
+      [currentCard.id]: {
+        correct: currentSessionData[currentCard.id]?.correct || 0,
+        incorrect: (currentSessionData[currentCard.id]?.incorrect || 0) + 1
+      }
+    };
+    setCurrentSessionData(updatedSessionData);
+    
+    // Update spaced repetition data - reset on incorrect
+    const repetitionData = currentCard.repetitionData || {
+      easeFactor: 2.5,
+      interval: 0,
+      nextReviewDate: new Date().toISOString(),
+      reviewCount: 0
+    };
+
+    // Decrease ease factor for incorrect answer
+    const newEaseFactor = Math.max(1.3, repetitionData.easeFactor - 0.2);
+
+    // Reset interval to start over
+    const nextReviewDate = new Date(); // Review again today
+
+    // Track at card level with spaced repetition
+    const updatedDecks = decks.map(d => {
+      if (d.id === currentDeckId) {
+        return {
+          ...d,
+          cards: d.cards.map((card, idx) => {
+            if (idx === currentCardIndex) {
+              return {
+                ...card,
+                stats: {
+                  correct: card.stats?.correct || 0,
+                  incorrect: (card.stats?.incorrect || 0) + 1
+                },
+                repetitionData: {
+                  easeFactor: newEaseFactor,
+                  interval: 0,
+                  nextReviewDate: nextReviewDate.toISOString(),
+                  reviewCount: 0 // Reset review count
+                }
+              };
+            }
+            return card;
+          })
+        };
+      }
+      return d;
+    });
+    setDecks(updatedDecks);
+    
+    // Check if this was the last card
+    if (currentCardIndex >= deck.cards.length - 1) {
+      // Last card - save session and shuffle
+      saveSession(updatedSessionData);
+      setTimeout(() => {
+        shuffleCards();
+      }, 1000);
+    } else {
+      // Move to next card
+      setTimeout(() => {
+        nextCard();
+      }, 500);
+    }
+  };
+
+  const saveSession = (sessionData) => {
+    const session = {
+      id: Date.now(),
+      date: new Date().toISOString(),
+      cardData: sessionData
+    };
+
+    const updatedDecks = decks.map(deck => {
+      if (deck.id === currentDeckId) {
+        return {
+          ...deck,
+          sessions: [...(deck.sessions || []), session]
+        };
+      }
+      return deck;
+    });
+    setDecks(updatedDecks);
+
+    // Reset for next session
+    const newSessionData = {};
+    const deck = decks.find(d => d.id === currentDeckId);
+    deck.cards.forEach(card => {
+      newSessionData[card.id] = { correct: 0, incorrect: 0 };
+    });
+    setCurrentSessionData(newSessionData);
+  };
+
+  const clearAllSessions = (deckId) => {
+    const updatedDecks = decks.map(deck => {
+      if (deck.id === deckId) {
+        return {
+          ...deck,
+          sessions: []
+        };
+      }
+      return deck;
+    });
+    setDecks(updatedDecks);
+  };
+
+  const deleteSession = (deckId, sessionId) => {
+    const updatedDecks = decks.map(deck => {
+      if (deck.id === deckId) {
+        return {
+          ...deck,
+          sessions: deck.sessions.filter(s => s.id !== sessionId)
+        };
+      }
+      return deck;
+    });
+    setDecks(updatedDecks);
+  };
+
+  const clearDeckStats = (deckId) => {
+    const updatedDecks = decks.map(deck => {
+      if (deck.id === deckId) {
+        return {
+          ...deck,
+          cards: deck.cards.map(card => ({
+            ...card,
+            stats: { correct: 0, incorrect: 0 }
+          }))
+        };
+      }
+      return deck;
+    });
+    setDecks(updatedDecks);
+  };
+
+  const toggleCardSelection = (cardId) => {
+    if (selectedCardsForCopy.includes(cardId)) {
+      setSelectedCardsForCopy(selectedCardsForCopy.filter(id => id !== cardId));
+    } else {
+      setSelectedCardsForCopy([...selectedCardsForCopy, cardId]);
+    }
+  };
+
+  const copyCardsToDecks = (targetDeckIds) => {
+    const sourceDeck = decks.find(d => d.id === currentDeckId);
+    const cardsToCopy = sourceDeck.cards.filter(card => 
+      selectedCardsForCopy.includes(card.id)
+    );
+
+    const updatedDecks = decks.map(deck => {
+      if (targetDeckIds.includes(deck.id)) {
+        // Copy cards to target deck, creating new IDs to avoid conflicts
+        const copiedCards = cardsToCopy.map(card => ({
+          ...card,
+          id: Date.now() + Math.random(), // New unique ID
+          stats: { correct: 0, incorrect: 0 } // Reset stats for copied cards
+        }));
+        return {
+          ...deck,
+          cards: [...deck.cards, ...copiedCards]
+        };
+      }
+      return deck;
+    });
+
+    setDecks(updatedDecks);
+    setSelectedCardsForCopy([]);
+    setShowCopyModal(false);
+  };
+
+  const currentDeck = currentDeckId ? decks.find(d => d.id === currentDeckId) : null;
+  const currentCard = currentDeck && currentDeck.cards[currentCardIndex];
+
+  return (
+    <div style={{
+      fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      background: darkMode 
+        ? 'linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%)'
+        : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      minHeight: '100vh',
+      padding: '20px',
+      transition: 'background 0.3s ease'
+    }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Header */}
+        <header style={{ textAlign: 'center', marginBottom: '40px', animation: 'fadeInDown 0.6s ease-out', position: 'relative' }}>
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            style={{
+              position: 'absolute',
+              top: '0',
+              right: '0',
+              background: darkMode ? '#2a2a3e' : 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '12px 20px',
+              cursor: 'pointer',
+              color: 'white',
+              fontWeight: '600',
+              fontSize: '1rem',
+              transition: 'all 0.3s ease'
+            }}
+            title="Toggle Dark Mode (Ctrl/Cmd + D)"
+          >
+            {darkMode ? '☀️ Light' : '🌙 Dark'}
+          </button>
+
+          <h1 style={{
+            fontFamily: "'Fraunces', serif",
+            fontSize: '3.5rem',
+            color: 'white',
+            marginBottom: '10px',
+            textShadow: '2px 4px 8px rgba(0, 0, 0, 0.2)'
+          }}>FlashStudy</h1>
+          <p style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '1.2rem' }}>
+            Master anything with beautiful flashcards
+          </p>
+        </header>
+
+        <div style={{
+          background: darkMode ? '#16213e' : 'white',
+          borderRadius: '24px',
+          padding: '40px',
+          boxShadow: darkMode 
+            ? '0 20px 60px rgba(0, 0, 0, 0.6)'
+            : '0 20px 60px rgba(0, 0, 0, 0.3)',
+          animation: 'fadeInUp 0.6s ease-out 0.2s both',
+          color: darkMode ? '#e0e0e0' : '#1A1A2E',
+          transition: 'all 0.3s ease'
+        }}>
+          {/* Home View */}
+          {currentView === 'home' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                <h2>My Decks</h2>
+                <button onClick={() => setCurrentView('createDeck')} style={{
+                  padding: '14px 28px',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  background: '#FF6B6B',
+                  color: 'white',
+                  boxShadow: '0 4px 12px rgba(255, 107, 107, 0.3)',
+                  transition: 'all 0.3s ease'
+                }}>+ Create New Deck</button>
+              </div>
+
+              {decks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                  <h3 style={{ fontSize: '1.8rem', marginBottom: '12px' }}>No decks yet!</h3>
+                  <p style={{ color: '#666', marginBottom: '24px' }}>Create your first deck to start studying</p>
+                  <button onClick={() => setCurrentView('createDeck')} style={{
+                    padding: '14px 28px',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    background: '#FF6B6B',
+                    color: 'white'
+                  }}>Create Your First Deck</button>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: '24px'
+                }}>
+                  {decks.map(deck => (
+                    <div key={deck.id} style={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      borderRadius: '16px',
+                      padding: '24px',
+                      color: 'white',
+                      position: 'relative',
+                      overflow: 'visible',
+                      transition: 'all 0.3s ease'
+                    }}>
+                      {/* 3-dot menu button */}
+                      <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowDeckMenu(showDeckMenu === deck.id ? null : deck.id);
+                          }}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            color: 'white',
+                            fontWeight: '700',
+                            fontSize: '1.2rem'
+                          }}
+                        >⋮</button>
+                        
+                        {/* Dropdown menu */}
+                        {showDeckMenu === deck.id && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            right: '0',
+                            marginTop: '8px',
+                            background: 'white',
+                            borderRadius: '12px',
+                            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+                            minWidth: '180px',
+                            zIndex: 100,
+                            overflow: 'hidden'
+                          }}>
+                            <button onClick={() => {
+                              setViewingDeckStats(deck.id);
+                              setShowStatsView(true);
+                              setShowHistoryView(false);
+                              setShowDeckMenu(null);
+                              setCurrentView('deckStats');
+                            }} style={{
+                              width: '100%',
+                              padding: '12px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              color: '#1A1A2E',
+                              fontSize: '0.95rem',
+                              fontWeight: '500'
+                            }}>📊 View Stats</button>
+                            
+                            <button onClick={() => {
+                              setViewingDeckStats(deck.id);
+                              setShowHistoryView(true);
+                              setShowStatsView(false);
+                              setShowDeckMenu(null);
+                              setCurrentView('deckStats');
+                            }} style={{
+                              width: '100%',
+                              padding: '12px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              color: '#1A1A2E',
+                              fontSize: '0.95rem',
+                              fontWeight: '500'
+                            }}>📈 View History</button>
+                            
+                            {deck.sessions && deck.sessions.length > 0 && (
+                              <button onClick={() => {
+                                setDeckToClearing(deck.id);
+                                setShowClearAllModal(true);
+                                setShowDeckMenu(null);
+                              }} style={{
+                                width: '100%',
+                                padding: '12px 16px',
+                                border: 'none',
+                                background: 'transparent',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                color: '#FF4757',
+                                fontSize: '0.95rem',
+                                fontWeight: '500',
+                                borderTop: '1px solid #E0E0E0'
+                              }}>🗑️ Clear Sessions</button>
+                            )}
+                            
+                            {deck.cards.some(card => (card.stats?.correct > 0 || card.stats?.incorrect > 0)) && (
+                              <button onClick={() => {
+                                setDeckToClearing(deck.id);
+                                setShowClearStatsModal(true);
+                                setShowDeckMenu(null);
+                              }} style={{
+                                width: '100%',
+                                padding: '12px 16px',
+                                border: 'none',
+                                background: 'transparent',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                color: '#FF4757',
+                                fontSize: '0.95rem',
+                                fontWeight: '500',
+                                borderTop: deck.sessions && deck.sessions.length > 0 ? 'none' : '1px solid #E0E0E0'
+                              }}>📊 Clear Stats</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <h3 style={{ fontSize: '1.5rem', marginBottom: '8px', paddingRight: '40px' }}>{deck.name}</h3>
+                      <p style={{ opacity: 0.9, marginBottom: '16px' }}>{deck.description || 'No description'}</p>
+                      <div style={{ fontSize: '0.9rem', opacity: 0.8, marginBottom: '16px' }}>
+                        {deck.cards.length} cards
+                        {deck.sessions && deck.sessions.length > 0 && (
+                          <span> • {deck.sessions.length} sessions</span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button onClick={() => showStudy(deck.id)} style={{
+                          padding: '8px 16px',
+                          fontSize: '0.9rem',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: '#4ECDC4',
+                          color: 'white',
+                          fontWeight: '600'
+                        }}>Study</button>
+                        <button onClick={() => { setCurrentDeckId(deck.id); setCurrentView('editCards'); clearCardEditor(); }} style={{
+                          padding: '8px 16px',
+                          fontSize: '0.9rem',
+                          border: '2px solid white',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: 'white',
+                          color: '#1A1A2E',
+                          fontWeight: '600'
+                        }}>Edit Cards</button>
+                        <button onClick={() => deleteDeck(deck.id)} style={{
+                          padding: '8px 16px',
+                          fontSize: '0.9rem',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: '#FF4757',
+                          color: 'white',
+                          fontWeight: '600'
+                        }}>Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Create Deck View */}
+          {currentView === 'createDeck' && (
+            <div>
+              <button onClick={() => setCurrentView('home')} style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#FF6B6B',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                marginBottom: '24px'
+              }}>← Back to Decks</button>
+
+              <h2>Create New Deck</h2>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>Deck Name</label>
+                <input
+                  type="text"
+                  value={deckName}
+                  onChange={(e) => setDeckName(e.target.value)}
+                  placeholder="e.g., Spanish Vocabulary, Biology Chapter 3"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: '2px solid #E0E0E0',
+                    borderRadius: '8px',
+                    fontSize: '1rem'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>Description (Optional)</label>
+                <textarea
+                  value={deckDescription}
+                  onChange={(e) => setDeckDescription(e.target.value)}
+                  placeholder="What is this deck about?"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: '2px solid #E0E0E0',
+                    borderRadius: '8px',
+                    fontSize: '1rem',
+                    minHeight: '100px',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              <button onClick={createDeck} style={{
+                padding: '14px 28px',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                background: '#FF6B6B',
+                color: 'white'
+              }}>Create Deck</button>
+            </div>
+          )}
+
+          {/* Edit Cards View */}
+          {currentView === 'editCards' && currentDeck && (
+            <div>
+              <button onClick={() => setCurrentView('home')} style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#FF6B6B',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                marginBottom: '24px'
+              }}>← Back to Decks</button>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0 }}>Edit Cards - {currentDeck.name}</h2>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={() => setShowHistoryView(!showHistoryView)} style={{
+                    padding: '10px 20px',
+                    border: '2px solid #FFE66D',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: showHistoryView ? '#FFE66D' : 'transparent',
+                    color: showHistoryView ? '#1A1A2E' : '#FFE66D',
+                    fontWeight: '600',
+                    fontSize: '0.9rem'
+                  }}>
+                    {showHistoryView ? 'Hide History' : '📈 View History'}
+                  </button>
+                  <button onClick={() => setShowStatsView(!showStatsView)} style={{
+                    padding: '10px 20px',
+                    border: '2px solid #4ECDC4',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: showStatsView ? '#4ECDC4' : 'transparent',
+                    color: showStatsView ? 'white' : '#4ECDC4',
+                    fontWeight: '600',
+                    fontSize: '0.9rem'
+                  }}>
+                    {showStatsView ? 'Hide Stats' : '📊 View Stats'}
+                  </button>
+                  {selectedCardsForCopy.length > 0 && (
+                    <button onClick={() => setShowCopyModal(true)} style={{
+                      padding: '10px 20px',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: '#FFE66D',
+                      color: '#1A1A2E',
+                      fontWeight: '600',
+                      fontSize: '0.9rem'
+                    }}>
+                      Copy {selectedCardsForCopy.length} to Deck
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Undo Banner */}
+              {deletedCard && deletedCard.deckId === currentDeckId && (
+                <div style={{
+                  background: '#FFF3CD',
+                  border: '2px solid #FFC107',
+                  borderRadius: '12px',
+                  padding: '16px 20px',
+                  marginTop: '20px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  animation: 'fadeIn 0.3s ease-out'
+                }}>
+                  <span style={{ color: '#856404', fontWeight: '500' }}>
+                    Card deleted
+                  </span>
+                  <button onClick={undoDelete} style={{
+                    padding: '8px 20px',
+                    background: '#856404',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}>
+                    Undo
+                  </button>
+                </div>
+              )}
+
+              {/* Session History View */}
+              {showHistoryView && currentDeck.sessions && currentDeck.sessions.length > 0 && (
+                <div style={{
+                  background: '#FFF9E6',
+                  border: '2px solid #FFE66D',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  marginTop: '20px'
+                }}>
+                  <h3 style={{ marginBottom: '16px', color: '#1A1A2E' }}>Session History</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '16px' }}>
+                    {currentDeck.sessions.length} study sessions • Track your progress over time
+                  </p>
+
+                  {currentDeck.cards.map(card => {
+                    const cardHistory = currentDeck.sessions.map(session => ({
+                      date: new Date(session.date),
+                      correct: session.cardData[card.id]?.correct || 0,
+                      incorrect: session.cardData[card.id]?.incorrect || 0
+                    }));
+
+                    const totalCorrect = cardHistory.reduce((sum, s) => sum + s.correct, 0);
+                    const totalIncorrect = cardHistory.reduce((sum, s) => sum + s.incorrect, 0);
+
+                    return (
+                      <div key={card.id} style={{
+                        background: 'white',
+                        borderRadius: '8px',
+                        padding: '16px',
+                        marginBottom: '16px'
+                      }}>
+                        <div style={{ fontWeight: '600', marginBottom: '8px' }}>
+                          {card.frontText || '(Image card)'}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '12px' }}>
+                          Total: <span style={{ color: '#4ECDC4' }}>✓ {totalCorrect}</span>
+                          {' • '}
+                          <span style={{ color: '#FF6B6B' }}>✗ {totalIncorrect}</span>
+                        </div>
+                        
+                        {/* Visual bar chart */}
+                        <div style={{ display: 'flex', gap: '4px', height: '60px', alignItems: 'flex-end' }}>
+                          {cardHistory.map((session, idx) => {
+                            const maxVal = Math.max(...cardHistory.map(s => s.correct + s.incorrect));
+                            const height = maxVal > 0 ? ((session.correct / maxVal) * 100) : 0;
+                            
+                            return (
+                              <div key={idx} style={{
+                                flex: 1,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'flex-end',
+                                position: 'relative'
+                              }}>
+                                <div
+                                  title={`Session ${idx + 1}: ${session.correct} correct, ${session.incorrect} incorrect`}
+                                  style={{
+                                    height: `${height}%`,
+                                    background: session.correct > session.incorrect ? '#4ECDC4' : '#FF6B6B',
+                                    borderRadius: '4px 4px 0 0',
+                                    minHeight: session.correct + session.incorrect > 0 ? '8px' : '2px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.3s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.opacity = '0.7';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.opacity = '1';
+                                  }}
+                                >
+                                  <div style={{
+                                    position: 'absolute',
+                                    bottom: '-20px',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    fontSize: '0.7rem',
+                                    color: '#999',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {idx + 1}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: '#999', 
+                          marginTop: '24px',
+                          textAlign: 'center'
+                        }}>
+                          Sessions (hover for details)
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {showHistoryView && (!currentDeck.sessions || currentDeck.sessions.length === 0) && (
+                <div style={{
+                  background: '#FFF9E6',
+                  border: '2px solid #FFE66D',
+                  borderRadius: '12px',
+                  padding: '40px 20px',
+                  marginTop: '20px',
+                  textAlign: 'center'
+                }}>
+                  <p style={{ color: '#666', fontSize: '1.1rem' }}>
+                    No study sessions yet. Complete a full cycle of cards to record your first session!
+                  </p>
+                </div>
+              )}
+
+              <div style={{ marginTop: '30px' }}>
+                <div style={{
+                  background: '#F8F9FA',
+                  borderRadius: '16px',
+                  padding: '24px',
+                  marginBottom: '20px',
+                  border: '2px solid #E0E0E0'
+                }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: window.innerWidth > 768 ? '1fr 1fr' : '1fr',
+                    gap: '24px',
+                    marginBottom: '20px'
+                  }}>
+                    {/* Front Side */}
+                    <div style={{
+                      background: 'white',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      border: '2px solid #E0E0E0'
+                    }}>
+                      <h4 style={{ marginBottom: '12px', color: '#FF6B6B' }}>Front Side</h4>
+                      <textarea
+                        value={frontText}
+                        onChange={(e) => setFrontText(e.target.value)}
+                        placeholder="Enter question or prompt"
+                        rows="3"
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '2px solid #E0E0E0',
+                          borderRadius: '8px',
+                          fontSize: '1rem',
+                          resize: 'vertical'
+                        }}
+                      />
+                      
+                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #E0E0E0' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '0.9rem' }}>
+                          Add Image (Optional)
+                        </label>
+                        <div style={{ display: 'flex', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload('front', 'file', e)}
+                            style={{ display: 'none' }}
+                            id="frontImageFile"
+                          />
+                          <button onClick={() => document.getElementById('frontImageFile').click()} style={{
+                            padding: '8px 16px',
+                            fontSize: '0.9rem',
+                            border: '2px solid #1A1A2E',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            background: 'transparent',
+                            fontWeight: '600'
+                          }}>Upload Image</button>
+                          <button onClick={() => setShowFrontPasteArea(!showFrontPasteArea)} style={{
+                            padding: '8px 16px',
+                            fontSize: '0.9rem',
+                            border: '2px solid #1A1A2E',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            background: showFrontPasteArea ? '#1A1A2E' : 'transparent',
+                            color: showFrontPasteArea ? 'white' : '#1A1A2E',
+                            fontWeight: '600'
+                          }}>📋 Paste Image</button>
+                        </div>
+                        {showFrontPasteArea && (
+                          <div
+                            contentEditable
+                            onPaste={(e) => handlePasteEvent(e, 'front')}
+                            style={{
+                              marginTop: '8px',
+                              padding: '30px',
+                              border: '2px dashed #4ECDC4',
+                              borderRadius: '8px',
+                              textAlign: 'center',
+                              background: '#F0FFFE',
+                              color: '#666',
+                              cursor: 'text',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            Click here, then press Ctrl+V (or Cmd+V) to paste your copied image
+                          </div>
+                        )}
+                        {frontImage && (
+                          <div style={{ marginTop: '12px' }}>
+                            <img 
+                              src={frontImage} 
+                              alt="Front preview" 
+                              style={{
+                                maxWidth: '100%',
+                                maxHeight: '200px',
+                                borderRadius: '8px',
+                                objectFit: 'cover',
+                                display: 'block'
+                              }} 
+                            />
+                            <span
+                              onClick={() => { setFrontImage(null); setFrontImageError(false); }}
+                              style={{
+                                display: 'block',
+                                marginTop: '8px',
+                                color: '#FF6B6B',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem'
+                              }}
+                            >Remove Image</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Back Side */}
+                    <div style={{
+                      background: 'white',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      border: '2px solid #E0E0E0'
+                    }}>
+                      <h4 style={{ marginBottom: '12px', color: '#FF6B6B' }}>Back Side</h4>
+                      <textarea
+                        value={backText}
+                        onChange={(e) => setBackText(e.target.value)}
+                        placeholder="Enter answer"
+                        rows="3"
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '2px solid #E0E0E0',
+                          borderRadius: '8px',
+                          fontSize: '1rem',
+                          resize: 'vertical'
+                        }}
+                      />
+                      
+                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #E0E0E0' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '0.9rem' }}>
+                          Add Image (Optional)
+                        </label>
+                        <div style={{ display: 'flex', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload('back', 'file', e)}
+                            style={{ display: 'none' }}
+                            id="backImageFile"
+                          />
+                          <button onClick={() => document.getElementById('backImageFile').click()} style={{
+                            padding: '8px 16px',
+                            fontSize: '0.9rem',
+                            border: '2px solid #1A1A2E',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            background: 'transparent',
+                            fontWeight: '600'
+                          }}>Upload Image</button>
+                          <button onClick={() => setShowBackPasteArea(!showBackPasteArea)} style={{
+                            padding: '8px 16px',
+                            fontSize: '0.9rem',
+                            border: '2px solid #1A1A2E',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            background: showBackPasteArea ? '#1A1A2E' : 'transparent',
+                            color: showBackPasteArea ? 'white' : '#1A1A2E',
+                            fontWeight: '600'
+                          }}>📋 Paste Image</button>
+                        </div>
+                        {showBackPasteArea && (
+                          <div
+                            contentEditable
+                            onPaste={(e) => handlePasteEvent(e, 'back')}
+                            style={{
+                              marginTop: '8px',
+                              padding: '30px',
+                              border: '2px dashed #4ECDC4',
+                              borderRadius: '8px',
+                              textAlign: 'center',
+                              background: '#F0FFFE',
+                              color: '#666',
+                              cursor: 'text',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            Click here, then press Ctrl+V (or Cmd+V) to paste your copied image
+                          </div>
+                        )}
+                        {backImage && (
+                          <div style={{ marginTop: '12px' }}>
+                            <img 
+                              src={backImage} 
+                              alt="Back preview" 
+                              style={{
+                                maxWidth: '100%',
+                                maxHeight: '200px',
+                                borderRadius: '8px',
+                                objectFit: 'cover',
+                                display: 'block'
+                              }} 
+                            />
+                            <span
+                              onClick={() => { setBackImage(null); setBackImageError(false); }}
+                              style={{
+                                display: 'block',
+                                marginTop: '8px',
+                                color: '#FF6B6B',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem'
+                              }}
+                            >Remove Image</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button onClick={addCard} style={{
+                    padding: '14px 28px',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    background: '#FF6B6B',
+                    color: 'white'
+                  }}>{editingCardId ? 'Update Card' : 'Add Card'}</button>
+                  {editingCardId && (
+                    <button onClick={clearCardEditor} style={{
+                      padding: '14px 28px',
+                      border: '2px solid #666',
+                      borderRadius: '12px',
+                      fontSize: '1rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      background: 'transparent',
+                      color: '#666',
+                      marginLeft: '12px'
+                    }}>Cancel Edit</button>
+                  )}
+                </div>
+
+                {/* Cards List */}
+                <div style={{ marginTop: '24px' }}>
+                  {showStatsView && currentDeck.cards.length > 0 && (
+                    <div style={{
+                      background: '#F0FFFE',
+                      border: '2px solid #4ECDC4',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      marginBottom: '20px'
+                    }}>
+                      <h3 style={{ marginBottom: '16px', color: '#1A1A2E' }}>Card Performance</h3>
+                      <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '12px' }}>
+                        Sort by performance to focus on cards that need more practice
+                      </div>
+                      {currentDeck.cards
+                        .map(card => ({
+                          ...card,
+                          total: (card.stats?.correct || 0) + (card.stats?.incorrect || 0),
+                          accuracy: (card.stats?.correct || 0) + (card.stats?.incorrect || 0) > 0
+                            ? ((card.stats?.correct || 0) / ((card.stats?.correct || 0) + (card.stats?.incorrect || 0)) * 100).toFixed(0)
+                            : 'N/A'
+                        }))
+                        .sort((a, b) => {
+                          if (a.total === 0 && b.total === 0) return 0;
+                          if (a.total === 0) return 1;
+                          if (b.total === 0) return -1;
+                          return parseFloat(a.accuracy) - parseFloat(b.accuracy);
+                        })
+                        .map(card => (
+                          <div key={card.id} style={{
+                            background: 'white',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginBottom: '8px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                                {card.frontText || '(Image card)'}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                                {card.total > 0 ? (
+                                  <>
+                                    <span style={{ color: '#4ECDC4' }}>✓ {card.stats?.correct || 0}</span>
+                                    {' • '}
+                                    <span style={{ color: '#FF6B6B' }}>✗ {card.stats?.incorrect || 0}</span>
+                                    {' • '}
+                                    <span style={{ fontWeight: '600' }}>{card.accuracy}% accuracy</span>
+                                  </>
+                                ) : (
+                                  <span style={{ fontStyle: 'italic' }}>Not studied yet</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+
+                  {currentDeck.cards.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
+                      No cards yet. Add your first card above!
+                    </p>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ margin: 0 }}>All Cards</h3>
+                        {selectedCardsForCopy.length > 0 && (
+                          <button onClick={() => setSelectedCardsForCopy([])} style={{
+                            padding: '6px 12px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: '#E0E0E0',
+                            fontSize: '0.85rem',
+                            fontWeight: '600'
+                          }}>
+                            Clear Selection
+                          </button>
+                        )}
+                      </div>
+                      {currentDeck.cards.map(card => (
+                        <div key={card.id} style={{
+                          background: 'white',
+                          border: selectedCardsForCopy.includes(card.id) ? '2px solid #FFE66D' : '2px solid #E0E0E0',
+                          borderRadius: '12px',
+                          padding: '16px',
+                          marginBottom: '12px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          transition: 'all 0.3s ease'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '12px' }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedCardsForCopy.includes(card.id)}
+                              onChange={() => toggleCardSelection(card.id)}
+                              style={{
+                                width: '20px',
+                                height: '20px',
+                                cursor: 'pointer'
+                              }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '0.95rem', marginBottom: '4px' }}>
+                                <strong>Front:</strong> {card.frontText || '(Image only)'}
+                              </div>
+                              <div style={{ fontSize: '0.95rem', marginBottom: '8px' }}>
+                                <strong>Back:</strong> {card.backText || '(Image only)'}
+                              </div>
+                              {(card.stats?.correct > 0 || card.stats?.incorrect > 0) && (
+                                <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                                  <span style={{ color: '#4ECDC4' }}>✓ {card.stats?.correct || 0}</span>
+                                  {' • '}
+                                  <span style={{ color: '#FF6B6B' }}>✗ {card.stats?.incorrect || 0}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button onClick={() => editCard(card)} style={{
+                              padding: '8px 16px',
+                              fontSize: '0.9rem',
+                              border: '2px solid #4ECDC4',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              background: 'transparent',
+                              color: '#4ECDC4',
+                              fontWeight: '600'
+                            }}>Edit</button>
+                            <button onClick={() => deleteCard(card.id)} style={{
+                              padding: '8px 16px',
+                              fontSize: '0.9rem',
+                              border: 'none',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              background: '#FF4757',
+                              color: 'white',
+                              fontWeight: '600'
+                            }}>Delete</button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+
+                {/* Copy Modal */}
+                {showCopyModal && (
+                  <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 1000
+                  }} onClick={() => setShowCopyModal(false)}>
+                    <div style={{
+                      background: 'white',
+                      borderRadius: '16px',
+                      padding: '30px',
+                      maxWidth: '500px',
+                      width: '90%',
+                      maxHeight: '80vh',
+                      overflow: 'auto'
+                    }} onClick={(e) => e.stopPropagation()}>
+                      <h3 style={{ marginBottom: '20px' }}>Copy {selectedCardsForCopy.length} cards to...</h3>
+                      <div style={{ marginBottom: '20px' }}>
+                        {decks.filter(d => d.id !== currentDeckId).map(deck => (
+                          <div
+                            key={deck.id}
+                            onClick={() => {
+                              copyCardsToDecks([deck.id]);
+                            }}
+                            style={{
+                              padding: '16px',
+                              border: '2px solid #E0E0E0',
+                              borderRadius: '12px',
+                              marginBottom: '12px',
+                              cursor: 'pointer',
+                              transition: 'all 0.3s ease',
+                              background: 'white'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = '#4ECDC4';
+                              e.currentTarget.style.background = '#F0FFFE';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = '#E0E0E0';
+                              e.currentTarget.style.background = 'white';
+                            }}
+                          >
+                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>{deck.name}</div>
+                            <div style={{ fontSize: '0.85rem', color: '#666' }}>{deck.cards.length} cards</div>
+                          </div>
+                        ))}
+                        {decks.filter(d => d.id !== currentDeckId).length === 0 && (
+                          <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>
+                            No other decks available. Create a new deck first!
+                          </p>
+                        )}
+                      </div>
+                      <button onClick={() => setShowCopyModal(false)} style={{
+                        padding: '12px 24px',
+                        border: '2px solid #666',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        background: 'transparent',
+                        fontWeight: '600',
+                        width: '100%'
+                      }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Study View */}
+          {currentView === 'study' && currentDeck && currentCard && (
+            <div style={{ textAlign: 'center' }}>
+              <button onClick={() => setCurrentView('home')} style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#FF6B6B',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                marginBottom: '24px',
+                float: 'left'
+              }}>← Back to Decks</button>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', clear: 'both' }}>
+                <h2>{currentDeck.name}</h2>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={shuffleCards} style={{
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: '#4ECDC4',
+                    color: 'white',
+                    fontWeight: '600'
+                  }}>🔀 Shuffle</button>
+                  <button onClick={() => setShowFinishSessionModal(true)} style={{
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: '#FFE66D',
+                    color: '#1A1A2E',
+                    fontWeight: '600'
+                  }}>✓ Finish Session</button>
+                </div>
+              </div>
+
+              <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '10px' }}>
+                Card {currentCardIndex + 1} of {currentDeck.cards.length}
+              </div>
+
+              <div style={{ 
+                display: 'flex', 
+                gap: '20px', 
+                justifyContent: 'center', 
+                marginBottom: '30px',
+                fontSize: '0.95rem'
+              }}>
+                <span style={{ color: '#4ECDC4', fontWeight: '600' }}>
+                  ✓ {studyStats.correct} Correct
+                </span>
+                <span style={{ color: '#FF6B6B', fontWeight: '600' }}>
+                  ✗ {studyStats.incorrect} Incorrect
+                </span>
+              </div>
+
+              {/* Flashcard */}
+              <div style={{ perspective: '1000px', margin: '40px auto', maxWidth: '700px', height: '450px' }}>
+                <div
+                  onClick={() => setIsFlipped(!isFlipped)}
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: '100%',
+                    transition: 'transform 0.6s',
+                    transformStyle: 'preserve-3d',
+                    cursor: 'pointer',
+                    transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0)'
+                  }}
+                >
+                  {/* Front */}
+                  <div style={{
+                    position: 'absolute',
+                    width: '100%',
+                    height: '100%',
+                    backfaceVisibility: 'hidden',
+                    borderRadius: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    padding: '40px',
+                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.15)',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white'
+                  }}>
+                    <div style={{ fontSize: '1.5rem', marginBottom: '20px', wordWrap: 'break-word', maxWidth: '100%' }}>
+                      {currentCard.frontText}
+                    </div>
+                    {currentCard.frontImage && (
+                      <img src={currentCard.frontImage} alt="Front" style={{
+                        maxWidth: '100%',
+                        maxHeight: '250px',
+                        borderRadius: '12px',
+                        objectFit: 'contain',
+                        marginTop: '20px'
+                      }} />
+                    )}
+                  </div>
+
+                  {/* Back */}
+                  <div style={{
+                    position: 'absolute',
+                    width: '100%',
+                    height: '100%',
+                    backfaceVisibility: 'hidden',
+                    borderRadius: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    padding: '40px',
+                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.15)',
+                    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                    color: 'white',
+                    transform: 'rotateY(180deg)'
+                  }}>
+                    <div style={{ fontSize: '1.5rem', marginBottom: '20px', wordWrap: 'break-word', maxWidth: '100%' }}>
+                      {currentCard.backText}
+                    </div>
+                    {currentCard.backImage && (
+                      <img src={currentCard.backImage} alt="Back" style={{
+                        maxWidth: '100%',
+                        maxHeight: '250px',
+                        borderRadius: '12px',
+                        objectFit: 'contain',
+                        marginTop: '20px'
+                      }} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Spaced Repetition Info */}
+              {currentCard?.repetitionData && (
+                <div style={{ 
+                  textAlign: 'center', 
+                  marginTop: '16px',
+                  padding: '12px',
+                  background: darkMode ? 'rgba(78, 205, 196, 0.1)' : 'rgba(78, 205, 196, 0.1)',
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  color: darkMode ? '#4ECDC4' : '#2a9d8f'
+                }}>
+                  {currentCard.repetitionData.reviewCount === 0 ? (
+                    '📚 New card - Building your knowledge'
+                  ) : new Date(currentCard.repetitionData.nextReviewDate) <= new Date() ? (
+                    `🔄 Review due - Next review: ${currentCard.repetitionData.interval} days after correct`
+                  ) : (
+                    `✓ Next review: ${Math.ceil((new Date(currentCard.repetitionData.nextReviewDate) - new Date()) / (1000 * 60 * 60 * 24))} days`
+                  )}
+                </div>
+              )}
+
+              <div style={{ 
+                textAlign: 'center',
+                marginTop: '12px',
+                padding: '16px',
+                background: darkMode ? 'rgba(255, 230, 109, 0.1)' : 'rgba(255, 230, 109, 0.2)',
+                borderRadius: '8px'
+              }}>
+                <p style={{ 
+                  color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)', 
+                  marginBottom: '8px', 
+                  fontSize: '0.9rem',
+                  fontWeight: '600'
+                }}>
+                  ⌨️ Keyboard Shortcuts
+                </p>
+                <p style={{ 
+                  color: darkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)', 
+                  fontSize: '0.85rem',
+                  lineHeight: '1.6'
+                }}>
+                  <strong>Space:</strong> Flip card • <strong>←/→:</strong> Navigate • <strong>1:</strong> Got it • <strong>2:</strong> Missed • <strong>Ctrl+S:</strong> Shuffle
+                </p>
+              </div>
+
+              {/* Tracking Buttons */}
+              {isFlipped && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  gap: '12px', 
+                  marginTop: '20px'
+                }}>
+                  <button
+                    onClick={markCorrect}
+                    disabled={markedCardsInSession.has(currentCard?.id)}
+                    style={{
+                      background: markedCardsInSession.has(currentCard?.id) ? '#B0B0B0' : '#4ECDC4',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 30px',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      cursor: markedCardsInSession.has(currentCard?.id) ? 'not-allowed' : 'pointer',
+                      fontSize: '1rem',
+                      boxShadow: markedCardsInSession.has(currentCard?.id) ? 'none' : '0 4px 12px rgba(78, 205, 196, 0.3)',
+                      transition: 'all 0.3s ease',
+                      opacity: markedCardsInSession.has(currentCard?.id) ? 0.5 : 1
+                    }}
+                    title="Press 1"
+                  >✓ Got it <span style={{fontSize: '0.8rem', opacity: 0.7}}>(1)</span></button>
+                  <button
+                    onClick={markIncorrect}
+                    disabled={markedCardsInSession.has(currentCard?.id)}
+                    style={{
+                      background: markedCardsInSession.has(currentCard?.id) ? '#B0B0B0' : '#FF6B6B',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 30px',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      cursor: markedCardsInSession.has(currentCard?.id) ? 'not-allowed' : 'pointer',
+                      fontSize: '1rem',
+                      boxShadow: markedCardsInSession.has(currentCard?.id) ? 'none' : '0 4px 12px rgba(255, 107, 107, 0.3)',
+                      transition: 'all 0.3s ease',
+                      opacity: markedCardsInSession.has(currentCard?.id) ? 0.5 : 1
+                    }}
+                    title="Press 2"
+                  >✗ Missed <span style={{fontSize: '0.8rem', opacity: 0.7}}>(2)</span></button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '20px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={prevCard}
+                  disabled={currentCardIndex === 0}
+                  style={{
+                    background: 'white',
+                    color: '#1A1A2E',
+                    border: '2px solid #1A1A2E',
+                    padding: '12px 24px',
+                    borderRadius: '12px',
+                    fontWeight: '600',
+                    cursor: currentCardIndex === 0 ? 'not-allowed' : 'pointer',
+                    opacity: currentCardIndex === 0 ? 0.3 : 1
+                  }}
+                >← Previous</button>
+                <button
+                  onClick={() => setIsFlipped(!isFlipped)}
+                  style={{
+                    background: 'white',
+                    color: '#1A1A2E',
+                    border: '2px solid #1A1A2E',
+                    padding: '12px 24px',
+                    borderRadius: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >Flip Card</button>
+                <button
+                  onClick={nextCard}
+                  disabled={currentCardIndex === currentDeck.cards.length - 1}
+                  style={{
+                    background: 'white',
+                    color: '#1A1A2E',
+                    border: '2px solid #1A1A2E',
+                    padding: '12px 24px',
+                    borderRadius: '12px',
+                    fontWeight: '600',
+                    cursor: currentCardIndex === currentDeck.cards.length - 1 ? 'not-allowed' : 'pointer',
+                    opacity: currentCardIndex === currentDeck.cards.length - 1 ? 0.3 : 1
+                  }}
+                >Next →</button>
+              </div>
+            </div>
+          )}
+
+          {/* Finish Session Modal */}
+          {showFinishSessionModal && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 1000
+            }} onClick={() => setShowFinishSessionModal(false)}>
+              <div style={{
+                background: 'white',
+                borderRadius: '16px',
+                padding: '30px',
+                maxWidth: '400px',
+                width: '90%'
+              }} onClick={(e) => e.stopPropagation()}>
+                <h3 style={{ marginBottom: '16px' }}>Finish Study Session?</h3>
+                <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.5' }}>
+                  Your progress will be saved to session history. You've studied {studyStats.correct + studyStats.incorrect} cards so far.
+                </p>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={() => {
+                    saveSession(currentSessionData);
+                    setShowFinishSessionModal(false);
+                    setCurrentView('home');
+                  }} style={{
+                    flex: 1,
+                    padding: '12px 24px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: '#4ECDC4',
+                    color: 'white',
+                    fontWeight: '600'
+                  }}>Save & Exit</button>
+                  <button onClick={() => setShowFinishSessionModal(false)} style={{
+                    flex: 1,
+                    padding: '12px 24px',
+                    border: '2px solid #666',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    fontWeight: '600'
+                  }}>Continue Studying</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Deck Stats/History View */}
+          {currentView === 'deckStats' && viewingDeckStats && (
+            <div>
+              <button onClick={() => setCurrentView('home')} style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#FF6B6B',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                marginBottom: '24px'
+              }}>← Back to Decks</button>
+
+              {(() => {
+                const deck = decks.find(d => d.id === viewingDeckStats);
+                if (!deck) return null;
+
+                return (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                      <h2>{deck.name} - {showHistoryView ? 'History' : 'Stats'}</h2>
+                      <div style={{ display: 'flex', gap: '12px' }}>
+                        <button onClick={() => {
+                          setShowHistoryView(false);
+                          setShowStatsView(true);
+                        }} style={{
+                          padding: '10px 20px',
+                          border: '2px solid #4ECDC4',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: showStatsView ? '#4ECDC4' : 'transparent',
+                          color: showStatsView ? 'white' : '#4ECDC4',
+                          fontWeight: '600',
+                          fontSize: '0.9rem'
+                        }}>📊 Stats</button>
+                        <button onClick={() => {
+                          setShowStatsView(false);
+                          setShowHistoryView(true);
+                        }} style={{
+                          padding: '10px 20px',
+                          border: '2px solid #FFE66D',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: showHistoryView ? '#FFE66D' : 'transparent',
+                          color: showHistoryView ? '#1A1A2E' : '#FFE66D',
+                          fontWeight: '600',
+                          fontSize: '0.9rem'
+                        }}>📈 History</button>
+                      </div>
+                    </div>
+
+                    {/* Stats View */}
+                    {showStatsView && deck.cards.length > 0 && (
+                      <div style={{
+                        background: '#F0FFFE',
+                        border: '2px solid #4ECDC4',
+                        borderRadius: '12px',
+                        padding: '20px'
+                      }}>
+                        <h3 style={{ marginBottom: '16px', color: '#1A1A2E' }}>Card Performance</h3>
+                        {deck.cards.map(card => (
+                          <div key={card.id} style={{
+                            background: 'white',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginBottom: '8px'
+                          }}>
+                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                              {card.frontText || '(Image card)'}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                              {(card.stats?.correct > 0 || card.stats?.incorrect > 0) ? (
+                                <>
+                                  <span style={{ color: '#4ECDC4' }}>✓ {card.stats?.correct || 0}</span>
+                                  {' • '}
+                                  <span style={{ color: '#FF6B6B' }}>✗ {card.stats?.incorrect || 0}</span>
+                                  {' • '}
+                                  <span style={{ fontWeight: '600' }}>
+                                    {((card.stats?.correct || 0) / ((card.stats?.correct || 0) + (card.stats?.incorrect || 0)) * 100).toFixed(0)}% accuracy
+                                  </span>
+                                </>
+                              ) : (
+                                <span style={{ fontStyle: 'italic' }}>Not studied yet</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* History View */}
+                    {showHistoryView && deck.sessions && deck.sessions.length > 0 && (
+                      <div style={{
+                        background: '#FFF9E6',
+                        border: '2px solid #FFE66D',
+                        borderRadius: '12px',
+                        padding: '20px'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                          <h3 style={{ color: '#1A1A2E', margin: 0 }}>Session History ({deck.sessions.length} sessions)</h3>
+                          <button onClick={() => {
+                            setDeckToClearing(deck.id);
+                            setShowClearAllModal(true);
+                          }} style={{
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: '#FF4757',
+                            color: 'white',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem'
+                          }}>Clear All Sessions</button>
+                        </div>
+
+                        {/* Session List with Delete Buttons */}
+                        <div style={{ marginBottom: '20px' }}>
+                          <h4 style={{ fontSize: '0.9rem', color: '#666', marginBottom: '12px' }}>Manage Sessions:</h4>
+                          {deck.sessions.map((session, idx) => {
+                            const totalCards = Object.values(session.cardData).reduce((sum, data) => 
+                              sum + (data.correct || 0) + (data.incorrect || 0), 0
+                            );
+                            const totalCorrect = Object.values(session.cardData).reduce((sum, data) => 
+                              sum + (data.correct || 0), 0
+                            );
+                            
+                            return (
+                              <div key={session.id} style={{
+                                background: 'white',
+                                borderRadius: '8px',
+                                padding: '12px 16px',
+                                marginBottom: '8px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                border: '1px solid #E0E0E0'
+                              }}>
+                                <div>
+                                  <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                                    Session {idx + 1}
+                                  </div>
+                                  <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                                    {new Date(session.date).toLocaleString()} • {totalCards} cards studied • {totalCorrect} correct
+                                  </div>
+                                </div>
+                                <button onClick={() => deleteSession(deck.id, session.id)} style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: '#FF4757',
+                                  color: 'white',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem'
+                                }}>Delete</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Filter Dropdown */}
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '8px', display: 'block' }}>
+                            Filter View:
+                          </label>
+                          <select
+                            value={sessionFilter}
+                            onChange={(e) => setSessionFilter(e.target.value)}
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '8px',
+                              border: '2px solid #FFE66D',
+                              background: 'white',
+                              fontWeight: '600',
+                              fontSize: '0.9rem',
+                              cursor: 'pointer',
+                              width: '100%'
+                            }}
+                          >
+                            <option value="all">All Sessions Combined</option>
+                            {deck.sessions.map((session, idx) => (
+                              <option key={session.id} value={session.id}>
+                                Session {idx + 1} Only
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {deck.cards.map(card => {
+                          const sessionsToShow = sessionFilter === 'all' 
+                            ? deck.sessions 
+                            : deck.sessions.filter(s => s.id === parseInt(sessionFilter));
+
+                          const cardHistory = sessionsToShow.map((session, idx) => ({
+                            sessionNumber: sessionFilter === 'all' ? deck.sessions.indexOf(session) + 1 : idx + 1,
+                            date: new Date(session.date),
+                            correct: session.cardData[card.id]?.correct || 0,
+                            incorrect: session.cardData[card.id]?.incorrect || 0,
+                            sessionId: session.id
+                          }));
+
+                          const totalCorrect = cardHistory.reduce((sum, s) => sum + s.correct, 0);
+                          const totalIncorrect = cardHistory.reduce((sum, s) => sum + s.incorrect, 0);
+
+                          if (sessionFilter !== 'all' && totalCorrect === 0 && totalIncorrect === 0) {
+                            return null; // Hide cards with no data in filtered view
+                          }
+
+                          return (
+                            <div key={card.id} style={{
+                              background: 'white',
+                              borderRadius: '8px',
+                              padding: '16px',
+                              marginBottom: '16px'
+                            }}>
+                              <div style={{ fontWeight: '600', marginBottom: '8px' }}>
+                                {card.frontText || '(Image card)'}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '12px' }}>
+                                {sessionFilter === 'all' ? 'Total' : 'Session'}: <span style={{ color: '#4ECDC4' }}>✓ {totalCorrect}</span>
+                                {' • '}
+                                <span style={{ color: '#FF6B6B' }}>✗ {totalIncorrect}</span>
+                              </div>
+                              
+                              {sessionFilter === 'all' && (
+                                <>
+                                  {/* Visual bar chart */}
+                                  <div style={{ display: 'flex', gap: '4px', height: '60px', alignItems: 'flex-end' }}>
+                                    {cardHistory.map((session) => {
+                                      const maxVal = Math.max(...cardHistory.map(s => s.correct + s.incorrect));
+                                      const height = maxVal > 0 ? ((session.correct / maxVal) * 100) : 0;
+                                      
+                                      return (
+                                        <div key={session.sessionId} style={{
+                                          flex: 1,
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          justifyContent: 'flex-end',
+                                          position: 'relative'
+                                        }}>
+                                          <div
+                                            title={`Session ${session.sessionNumber}: ${session.correct} correct, ${session.incorrect} incorrect`}
+                                            style={{
+                                              height: `${height}%`,
+                                              background: session.correct > session.incorrect ? '#4ECDC4' : '#FF6B6B',
+                                              borderRadius: '4px 4px 0 0',
+                                              minHeight: session.correct + session.incorrect > 0 ? '8px' : '2px',
+                                              cursor: 'pointer',
+                                              transition: 'all 0.3s ease'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              e.currentTarget.style.opacity = '0.7';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              e.currentTarget.style.opacity = '1';
+                                            }}
+                                          >
+                                            <div style={{
+                                              position: 'absolute',
+                                              bottom: '-20px',
+                                              left: '50%',
+                                              transform: 'translateX(-50%)',
+                                              fontSize: '0.7rem',
+                                              color: '#999',
+                                              whiteSpace: 'nowrap'
+                                            }}>
+                                              {session.sessionNumber}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <div style={{ 
+                                    fontSize: '0.75rem', 
+                                    color: '#999', 
+                                    marginTop: '24px',
+                                    textAlign: 'center'
+                                  }}>
+                                    Sessions (hover for details)
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {showHistoryView && (!deck.sessions || deck.sessions.length === 0) && (
+                      <div style={{
+                        background: '#FFF9E6',
+                        border: '2px solid #FFE66D',
+                        borderRadius: '12px',
+                        padding: '40px 20px',
+                        textAlign: 'center'
+                      }}>
+                        <p style={{ color: '#666', fontSize: '1.1rem' }}>
+                          No study sessions yet. Complete a full cycle of cards to record your first session!
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Clear All Sessions Modal */}
+      {showClearAllModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowClearAllModal(false)}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '400px',
+            width: '90%'
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: '16px', color: '#FF4757' }}>⚠️ Clear All Sessions?</h3>
+            <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.5' }}>
+              This will permanently delete all study session history for this deck. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={() => {
+                clearAllSessions(deckToClearing);
+                setShowClearAllModal(false);
+                setDeckToClearing(null);
+              }} style={{
+                flex: 1,
+                padding: '12px 24px',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                background: '#FF4757',
+                color: 'white',
+                fontWeight: '600'
+              }}>Yes, Clear All</button>
+              <button onClick={() => {
+                setShowClearAllModal(false);
+                setDeckToClearing(null);
+              }} style={{
+                flex: 1,
+                padding: '12px 24px',
+                border: '2px solid #666',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                background: 'transparent',
+                fontWeight: '600'
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Stats Modal */}
+      {showClearStatsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowClearStatsModal(false)}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '400px',
+            width: '90%'
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: '16px', color: '#FF4757' }}>⚠️ Clear All Stats?</h3>
+            <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.5' }}>
+              This will reset all correct/incorrect counts to zero for every card in this deck. Session history will be preserved. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={() => {
+                clearDeckStats(deckToClearing);
+                setShowClearStatsModal(false);
+                setDeckToClearing(null);
+              }} style={{
+                flex: 1,
+                padding: '12px 24px',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                background: '#FF4757',
+                color: 'white',
+                fontWeight: '600'
+              }}>Yes, Clear Stats</button>
+              <button onClick={() => {
+                setShowClearStatsModal(false);
+                setDeckToClearing(null);
+              }} style={{
+                flex: 1,
+                padding: '12px 24px',
+                border: '2px solid #666',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                background: 'transparent',
+                fontWeight: '600'
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeInDown {
+          from {
+            opacity: 0;
+            transform: translateY(-30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:wght@700&display=swap');
+      `}</style>
+    </div>
+  );
+}
