@@ -2670,64 +2670,6 @@ function FlashcardApp() {
             </div>
           </div>
         </div>
-        </div>
-      )}
-
-      {/* Clear Stats Modal */}
-      {showClearStatsModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000
-        }} onClick={() => setShowClearStatsModal(false)}>
-          <div style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '30px',
-            maxWidth: '400px',
-            width: '90%'
-          }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginBottom: '16px', color: '#FF4757' }}>⚠️ Clear All Stats?</h3>
-            <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.5' }}>
-              This will reset all correct/incorrect counts to zero for every card in this deck. Session history will be preserved. This cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={() => {
-                clearDeckStats(deckToClearing);
-                setShowClearStatsModal(false);
-                setDeckToClearing(null);
-              }} style={{
-                flex: 1,
-                padding: '12px 24px',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                background: '#FF4757',
-                color: 'white',
-                fontWeight: '600'
-              }}>Yes, Clear Stats</button>
-              <button onClick={() => {
-                setShowClearStatsModal(false);
-                setDeckToClearing(null);
-              }} style={{
-                flex: 1,
-                padding: '12px 24px',
-                border: '2px solid #666',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                background: 'transparent',
-                fontWeight: '600'
-              }}>Cancel</button>
-            </div>
-          </div>
-        </div>
       )}
 
       <style>{`
