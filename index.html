@@ -128,7 +128,6 @@ function FlashcardApp() {
   const [backImageError, setBackImageError] = useState(false);
   const [deletedCard, setDeletedCard] = useState(null);
   const [undoTimer, setUndoTimer] = useState(null);
-  const [currentCardTags, setCurrentCardTags] = useState([]);
   const [filterByTag, setFilterByTag] = useState('all');
   const [studyStats, setStudyStats] = useState({ correct: 0, incorrect: 0 });
   const [showStatsView, setShowStatsView] = useState(false);
@@ -155,23 +154,6 @@ function FlashcardApp() {
   });
   const [showSidebar, setShowSidebar] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showTagModal, setShowTagModal] = useState(false);
-  const [newTag, setNewTag] = useState('');
-  const [availableTags, setAvailableTags] = useState(() => {
-    const saved = localStorage.getItem('availableTags');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [selectedTagsForCard, setSelectedTagsForCard] = useState([]);
-  const [filterByTags, setFilterByTags] = useState([]);
-  const [cardCategory, setCardCategory] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All');
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [undoStack, setUndoStack] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-  const [showProgressDashboard, setShowProgressDashboard] = useState(false);
-  const [imageBlurLevel, setImageBlurLevel] = useState(10);
-  const [isImageBlurred, setIsImageBlurred] = useState(true);
   useEffect(() => {
     // Save to both localStorage (as backup) and IndexedDB (for more space)
     const saveData = async () => {
