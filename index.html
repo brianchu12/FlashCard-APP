@@ -97,14 +97,6 @@ function FlashcardApp() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [startWithBack, setStartWithBack] = useState(false);
-  const [showTagModal, setShowTagModal] = useState(false);
-  const [currentCardTags, setCurrentCardTags] = useState([]);
-  const [availableTags, setAvailableTags] = useState(() => {
-    const saved = localStorage.getItem('flashcardTags');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [filterTags, setFilterTags] = useState([]);
-  const [newTagName, setNewTagName] = useState('');
   
   // Form states
   const [deckName, setDeckName] = useState('');
@@ -115,12 +107,6 @@ function FlashcardApp() {
   const [backImage, setBackImage] = useState(null);
   const [showFrontPasteArea, setShowFrontPasteArea] = useState(false);
   const [showBackPasteArea, setShowBackPasteArea] = useState(false);
-  const [cardCategory, setCardCategory] = useState('');
-  const [availableCategories, setAvailableCategories] = useState(() => {
-    const saved = localStorage.getItem('flashcardCategories');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [filterByCategory, setFilterByCategory] = useState('all');
   const [showFrontUrlInput, setShowFrontUrlInput] = useState(false);
   const [showBackUrlInput, setShowBackUrlInput] = useState(false);
   const [editingCardId, setEditingCardId] = useState(null);
@@ -178,18 +164,6 @@ function FlashcardApp() {
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
-
-  useEffect(() => {
-    localStorage.setItem('availableTags', JSON.stringify(availableTags));
-  }, [availableTags]);
-
-  useEffect(() => {
-    localStorage.setItem('flashcardCategories', JSON.stringify(availableCategories));
-  }, [availableCategories]);
-
-  useEffect(() => {
-    localStorage.setItem('flashcardCategories', JSON.stringify(availableCategories));
-  }, [availableCategories]);
 
   // Auto-update dark mode based on time of day (only if user hasn't manually toggled recently)
   useEffect(() => {
@@ -358,11 +332,6 @@ function FlashcardApp() {
       return;
     }
 
-    // Add category to available categories if it's new
-    if (cardCategory && !availableCategories.includes(cardCategory)) {
-      setAvailableCategories([...availableCategories, cardCategory]);
-    }
-
     const updatedDecks = decks.map(deck => {
       if (deck.id === currentDeckId) {
         if (editingCardId) {
@@ -377,7 +346,6 @@ function FlashcardApp() {
                     backText, 
                     frontImage, 
                     backImage,
-                    category: cardCategory || card.category || '',
                     stats: card.stats || { correct: 0, incorrect: 0 },
                     // Preserve spaced repetition data
                     repetitionData: card.repetitionData || {
@@ -398,7 +366,6 @@ function FlashcardApp() {
             backText,
             frontImage,
             backImage,
-            category: cardCategory || '',
             stats: { correct: 0, incorrect: 0 },
             repetitionData: {
               easeFactor: 2.5,
@@ -662,12 +629,16 @@ function FlashcardApp() {
       saveSession(updatedSessionData);
       setTimeout(() => {
         shuffleCards();
-      }, 1000);
+      }, 1500);
     } else {
-      // Move to next card
+      // Move to next card with delay so user sees the answer briefly
       setTimeout(() => {
-        nextCard();
-      }, 500);
+        setCurrentCardIndex(currentCardIndex + 1);
+      }, 800);
+      // Delay the flip back slightly longer
+      setTimeout(() => {
+        setIsFlipped(false);
+      }, 1200);
     }
   };
 
@@ -744,12 +715,16 @@ function FlashcardApp() {
       saveSession(updatedSessionData);
       setTimeout(() => {
         shuffleCards();
-      }, 1000);
+      }, 1500);
     } else {
-      // Move to next card
+      // Move to next card with delay so user sees the answer briefly
       setTimeout(() => {
-        nextCard();
-      }, 500);
+        setCurrentCardIndex(currentCardIndex + 1);
+      }, 800);
+      // Delay the flip back slightly longer
+      setTimeout(() => {
+        setIsFlipped(false);
+      }, 1200);
     }
   };
 
@@ -2299,7 +2274,9 @@ function FlashcardApp() {
                     padding: '40px',
                     boxShadow: '0 10px 40px rgba(0, 0, 0, 0.15)',
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: 'white'
+                    color: 'white',
+                    boxSizing: 'border-box',
+                    overflow: 'hidden'
                   }}>
                     <div style={{ 
                       fontSize: '1.5rem', 
@@ -2335,7 +2312,9 @@ function FlashcardApp() {
                     boxShadow: '0 10px 40px rgba(0, 0, 0, 0.15)',
                     background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
                     color: 'white',
-                    transform: 'rotateY(180deg)'
+                    transform: 'rotateY(180deg)',
+                    boxSizing: 'border-box',
+                    overflow: 'hidden'
                   }}>
                     <div style={{ 
                       fontSize: '1.5rem', 
