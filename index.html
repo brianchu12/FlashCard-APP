@@ -68,6 +68,9 @@ function FlashcardApp() {
     return hour < 6 || hour >= 18;
   });
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDeckId, setExportDeckId] = useState(null);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showTagModal, setShowTagModal] = useState(false);
   const [newTag, setNewTag] = useState('');
@@ -663,6 +666,76 @@ function FlashcardApp() {
     setDecks(updatedDecks);
   };
 
+  const exportDeck = (deckId) => {
+    const deck = decks.find(d => d.id === deckId);
+    if (!deck) return;
+
+    const exportData = {
+      name: deck.name,
+      description: deck.description,
+      cards: deck.cards,
+      exportedAt: new Date().toISOString(),
+      version: '1.0'
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${deck.name.replace(/[^a-z0-9]/gi, '_')}_flashcards.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const importDeck = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+        
+        // Validate the imported data
+        if (!importedData.name || !importedData.cards) {
+          alert('Invalid deck file format');
+          return;
+        }
+
+        // Create new deck with imported data
+        const newDeck = {
+          id: Date.now(),
+          name: importedData.name,
+          description: importedData.description || '',
+          cards: importedData.cards.map(card => ({
+            ...card,
+            id: Date.now() + Math.random(), // New IDs to avoid conflicts
+            stats: card.stats || { correct: 0, incorrect: 0 },
+            repetitionData: card.repetitionData || {
+              easeFactor: 2.5,
+              interval: 0,
+              nextReviewDate: new Date().toISOString(),
+              reviewCount: 0
+            }
+          })),
+          sessions: [],
+          createdAt: new Date().toISOString()
+        };
+
+        setDecks([...decks, newDeck]);
+        setShowImportModal(false);
+        alert(`Successfully imported "${newDeck.name}" with ${newDeck.cards.length} cards!`);
+      } catch (error) {
+        alert('Error importing deck. Please make sure the file is a valid FlashStudy deck export.');
+        console.error('Import error:', error);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const toggleCardSelection = (cardId) => {
     if (selectedCardsForCopy.includes(cardId)) {
       setSelectedCardsForCopy(selectedCardsForCopy.filter(id => id !== cardId));
@@ -979,18 +1052,31 @@ function FlashcardApp() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
                 <h2>My Decks</h2>
-                <button onClick={() => setCurrentView('createDeck')} style={{
-                  padding: '14px 28px',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  background: '#FF6B6B',
-                  color: 'white',
-                  boxShadow: '0 4px 12px rgba(255, 107, 107, 0.3)',
-                  transition: 'all 0.3s ease'
-                }}>+ Create New Deck</button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={() => setShowImportModal(true)} style={{
+                    padding: '14px 28px',
+                    border: '2px solid #4ECDC4',
+                    borderRadius: '12px',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    color: darkMode ? '#4ECDC4' : '#1A1A2E',
+                    transition: 'all 0.3s ease'
+                  }}>📥 Import Deck</button>
+                  <button onClick={() => setCurrentView('createDeck')} style={{
+                    padding: '14px 28px',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    background: '#FF6B6B',
+                    color: 'white',
+                    boxShadow: '0 4px 12px rgba(255, 107, 107, 0.3)',
+                    transition: 'all 0.3s ease'
+                  }}>+ Create New Deck</button>
+                </div>
               </div>
 
               {decks.length === 0 ? (
@@ -1092,6 +1178,22 @@ function FlashcardApp() {
                               fontSize: '0.95rem',
                               fontWeight: '500'
                             }}>📈 View History</button>
+
+                            <button onClick={() => {
+                              exportDeck(deck.id);
+                              setShowDeckMenu(null);
+                            }} style={{
+                              width: '100%',
+                              padding: '12px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              color: '#4ECDC4',
+                              fontSize: '0.95rem',
+                              fontWeight: '500',
+                              borderTop: '1px solid #E0E0E0'
+                            }}>📤 Export Deck</button>
                             
                             {deck.sessions && deck.sessions.length > 0 && (
                               <button onClick={() => {
@@ -2668,6 +2770,67 @@ function FlashcardApp() {
                 fontWeight: '600'
               }}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Deck Modal */}
+      {showImportModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowImportModal(false)}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '500px',
+            width: '90%'
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: '16px', color: '#4ECDC4' }}>📥 Import Deck</h3>
+            <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.6' }}>
+              Select a FlashStudy deck file (.json) to import. The deck will be added to your collection with all its cards.
+            </p>
+            <input
+              type="file"
+              accept=".json"
+              onChange={importDeck}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '2px dashed #4ECDC4',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                marginBottom: '20px'
+              }}
+            />
+            <div style={{ 
+              background: '#F0FFFE',
+              padding: '12px',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              color: '#666',
+              marginBottom: '20px'
+            }}>
+              💡 <strong>Tip:</strong> Export a deck from another device or share decks with friends!
+            </div>
+            <button onClick={() => setShowImportModal(false)} style={{
+              padding: '12px 24px',
+              border: '2px solid #666',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: 'transparent',
+              fontWeight: '600',
+              width: '100%'
+            }}>Cancel</button>
           </div>
         </div>
       )}
