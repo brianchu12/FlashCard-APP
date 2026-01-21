@@ -60,8 +60,14 @@ function FlashcardApp() {
   const [showClearStatsModal, setShowClearStatsModal] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
+    if (saved !== null) {
+      return JSON.parse(saved);
+    }
+    // Auto-detect based on time: 6 AM - 6 PM = light mode, otherwise dark
+    const hour = new Date().getHours();
+    return hour < 6 || hour >= 18;
   });
+  const [showSidebar, setShowSidebar] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showTagModal, setShowTagModal] = useState(false);
   const [newTag, setNewTag] = useState('');
@@ -88,6 +94,32 @@ function FlashcardApp() {
   useEffect(() => {
     localStorage.setItem('availableTags', JSON.stringify(availableTags));
   }, [availableTags]);
+
+  // Auto-update dark mode based on time of day (only if user hasn't manually toggled recently)
+  useEffect(() => {
+    const checkTime = () => {
+      const lastManualToggle = localStorage.getItem('lastManualDarkModeToggle');
+      const now = Date.now();
+      
+      // If user manually toggled in last 24 hours, don't auto-switch
+      if (lastManualToggle && (now - parseInt(lastManualToggle)) < 24 * 60 * 60 * 1000) {
+        return;
+      }
+      
+      const hour = new Date().getHours();
+      const shouldBeDark = hour < 6 || hour >= 18;
+      
+      if (darkMode !== shouldBeDark) {
+        setDarkMode(shouldBeDark);
+      }
+    };
+    
+    // Check every hour
+    const interval = setInterval(checkTime, 60 * 60 * 1000);
+    checkTime(); // Check immediately on load
+    
+    return () => clearInterval(interval);
+  }, [darkMode]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -684,7 +716,32 @@ function FlashcardApp() {
         <header style={{ textAlign: 'center', marginBottom: '40px', animation: 'fadeInDown 0.6s ease-out', position: 'relative' }}>
           {/* Dark Mode Toggle */}
           <button
-            onClick={() => setDarkMode(!darkMode)}
+            onClick={() => {
+              setDarkMode(!darkMode);
+              localStorage.setItem('lastManualDarkModeToggle', Date.now().toString());
+            }}
+            style={{
+              position: 'absolute',
+              top: '0',
+              right: showSidebar ? '180px' : '0',
+              background: darkMode ? '#2a2a3e' : 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '12px 20px',
+              cursor: 'pointer',
+              color: 'white',
+              fontWeight: '600',
+              fontSize: '1rem',
+              transition: 'all 0.3s ease'
+            }}
+            title="Toggle Dark Mode (Ctrl/Cmd + D) - Auto-switches at 6 AM/PM"
+          >
+            {darkMode ? '☀️ Light' : '🌙 Dark'}
+          </button>
+
+          {/* Sidebar Toggle */}
+          <button
+            onClick={() => setShowSidebar(!showSidebar)}
             style={{
               position: 'absolute',
               top: '0',
@@ -699,9 +756,9 @@ function FlashcardApp() {
               fontSize: '1rem',
               transition: 'all 0.3s ease'
             }}
-            title="Toggle Dark Mode (Ctrl/Cmd + D)"
+            title="Toggle Statistics Sidebar"
           >
-            {darkMode ? '☀️ Light' : '🌙 Dark'}
+            {showSidebar ? '📊 Hide Stats' : '📊 Show Stats'}
           </button>
 
           <h1 style={{
@@ -716,7 +773,197 @@ function FlashcardApp() {
           </p>
         </header>
 
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+          {/* Sidebar */}
+          {showSidebar && (
+            <div style={{
+              width: '300px',
+              flexShrink: 0,
+              background: darkMode ? '#1e2a3a' : 'white',
+              borderRadius: '24px',
+              padding: '24px',
+              boxShadow: darkMode 
+                ? '0 20px 60px rgba(0, 0, 0, 0.6)'
+                : '0 20px 60px rgba(0, 0, 0, 0.3)',
+              color: darkMode ? '#e0e0e0' : '#1A1A2E',
+              transition: 'all 0.3s ease',
+              maxHeight: '80vh',
+              overflowY: 'auto'
+            }}>
+              <h3 style={{ 
+                marginTop: 0, 
+                marginBottom: '20px',
+                fontSize: '1.5rem',
+                borderBottom: `2px solid ${darkMode ? '#2a3f5f' : '#E0E0E0'}`,
+                paddingBottom: '12px'
+              }}>
+                📊 Overview
+              </h3>
+
+              {/* Total Stats */}
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: darkMode ? '#999' : '#666',
+                  marginBottom: '8px',
+                  fontWeight: '600'
+                }}>
+                  Total Statistics
+                </div>
+                <div style={{
+                  background: darkMode ? '#2a3f5f' : '#F0F8FF',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '8px'
+                }}>
+                  <div style={{ fontSize: '2rem', fontWeight: '700', color: '#4ECDC4' }}>
+                    {decks.length}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>Total Decks</div>
+                </div>
+
+                <div style={{
+                  background: darkMode ? '#2a3f5f' : '#FFF9E6',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '8px'
+                }}>
+                  <div style={{ fontSize: '2rem', fontWeight: '700', color: '#FFE66D' }}>
+                    {decks.reduce((sum, deck) => sum + deck.cards.length, 0)}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>Total Cards</div>
+                </div>
+
+                <div style={{
+                  background: darkMode ? '#2a3f5f' : '#F0FFFE',
+                  borderRadius: '12px',
+                  padding: '16px'
+                }}>
+                  <div style={{ fontSize: '2rem', fontWeight: '700', color: '#667eea' }}>
+                    {decks.reduce((sum, deck) => sum + (deck.sessions?.length || 0), 0)}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>Study Sessions</div>
+                </div>
+              </div>
+
+              {/* Overall Performance */}
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: darkMode ? '#999' : '#666',
+                  marginBottom: '12px',
+                  fontWeight: '600'
+                }}>
+                  Overall Performance
+                </div>
+                {(() => {
+                  const totalCorrect = decks.reduce((sum, deck) => 
+                    sum + deck.cards.reduce((cardSum, card) => 
+                      cardSum + (card.stats?.correct || 0), 0), 0);
+                  const totalIncorrect = decks.reduce((sum, deck) => 
+                    sum + deck.cards.reduce((cardSum, card) => 
+                      cardSum + (card.stats?.incorrect || 0), 0), 0);
+                  const total = totalCorrect + totalIncorrect;
+                  const accuracy = total > 0 ? ((totalCorrect / total) * 100).toFixed(1) : 0;
+
+                  return (
+                    <>
+                      <div style={{
+                        background: darkMode ? '#2a3f5f' : '#E8F5E9',
+                        borderRadius: '12px',
+                        padding: '12px',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <span style={{ fontSize: '0.9rem' }}>✓ Correct</span>
+                        <span style={{ fontSize: '1.2rem', fontWeight: '700', color: '#4ECDC4' }}>
+                          {totalCorrect}
+                        </span>
+                      </div>
+
+                      <div style={{
+                        background: darkMode ? '#2a3f5f' : '#FFEBEE',
+                        borderRadius: '12px',
+                        padding: '12px',
+                        marginBottom: '12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <span style={{ fontSize: '0.9rem' }}>✗ Incorrect</span>
+                        <span style={{ fontSize: '1.2rem', fontWeight: '700', color: '#FF6B6B' }}>
+                          {totalIncorrect}
+                        </span>
+                      </div>
+
+                      {total > 0 && (
+                        <div style={{
+                          background: darkMode ? '#3a2f5f' : '#F3E5F5',
+                          borderRadius: '12px',
+                          padding: '16px',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ fontSize: '2.5rem', fontWeight: '700', color: '#667eea' }}>
+                            {accuracy}%
+                          </div>
+                          <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>Accuracy Rate</div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Cards Due for Review */}
+              <div>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: darkMode ? '#999' : '#666',
+                  marginBottom: '12px',
+                  fontWeight: '600'
+                }}>
+                  🔄 Cards Due for Review
+                </div>
+                {(() => {
+                  const now = new Date();
+                  const dueCards = decks.reduce((sum, deck) => 
+                    sum + deck.cards.filter(card => {
+                      const reviewDate = new Date(card.repetitionData?.nextReviewDate);
+                      return reviewDate <= now;
+                    }).length, 0);
+
+                  return (
+                    <div style={{
+                      background: dueCards > 0 
+                        ? (darkMode ? '#3f2a2a' : '#FFF3E0')
+                        : (darkMode ? '#2a3f5f' : '#E8F5E9'),
+                      borderRadius: '12px',
+                      padding: '16px',
+                      textAlign: 'center',
+                      border: dueCards > 0 ? '2px solid #FF6B6B' : 'none'
+                    }}>
+                      <div style={{ 
+                        fontSize: '2.5rem', 
+                        fontWeight: '700', 
+                        color: dueCards > 0 ? '#FF6B6B' : '#4ECDC4'
+                      }}>
+                        {dueCards}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+                        {dueCards === 0 ? 'All caught up! 🎉' : 'Need review'}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Main Content */}
         <div style={{
+          flex: 1,
           background: darkMode ? '#16213e' : 'white',
           borderRadius: '24px',
           padding: '40px',
@@ -1234,7 +1481,9 @@ function FlashcardApp() {
                           border: '2px solid #E0E0E0',
                           borderRadius: '8px',
                           fontSize: '1rem',
-                          resize: 'vertical'
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                          fontFamily: 'inherit'
                         }}
                       />
                       
@@ -1336,7 +1585,9 @@ function FlashcardApp() {
                           border: '2px solid #E0E0E0',
                           borderRadius: '8px',
                           fontSize: '1rem',
-                          resize: 'vertical'
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                          fontFamily: 'inherit'
                         }}
                       />
                       
@@ -2419,6 +2670,7 @@ function FlashcardApp() {
             </div>
           </div>
         </div>
+        </div>
       )}
 
       <style>{`
@@ -2452,7 +2704,6 @@ function FlashcardApp() {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<FlashcardApp />);
-console.log('App loaded successfully');
   </script>
 </body>
 </html>
