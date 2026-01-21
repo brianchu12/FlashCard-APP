@@ -96,6 +96,15 @@ function FlashcardApp() {
   const [currentDeckId, setCurrentDeckId] = useState(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [startWithBack, setStartWithBack] = useState(false);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [currentCardTags, setCurrentCardTags] = useState([]);
+  const [availableTags, setAvailableTags] = useState(() => {
+    const saved = localStorage.getItem('flashcardTags');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [filterTags, setFilterTags] = useState([]);
+  const [newTagName, setNewTagName] = useState('');
   
   // Form states
   const [deckName, setDeckName] = useState('');
@@ -106,6 +115,12 @@ function FlashcardApp() {
   const [backImage, setBackImage] = useState(null);
   const [showFrontPasteArea, setShowFrontPasteArea] = useState(false);
   const [showBackPasteArea, setShowBackPasteArea] = useState(false);
+  const [cardCategory, setCardCategory] = useState('');
+  const [availableCategories, setAvailableCategories] = useState(() => {
+    const saved = localStorage.getItem('flashcardCategories');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [filterByCategory, setFilterByCategory] = useState('all');
   const [showFrontUrlInput, setShowFrontUrlInput] = useState(false);
   const [showBackUrlInput, setShowBackUrlInput] = useState(false);
   const [editingCardId, setEditingCardId] = useState(null);
@@ -113,6 +128,8 @@ function FlashcardApp() {
   const [backImageError, setBackImageError] = useState(false);
   const [deletedCard, setDeletedCard] = useState(null);
   const [undoTimer, setUndoTimer] = useState(null);
+  const [currentCardTags, setCurrentCardTags] = useState([]);
+  const [filterByTag, setFilterByTag] = useState('all');
   const [studyStats, setStudyStats] = useState({ correct: 0, incorrect: 0 });
   const [showStatsView, setShowStatsView] = useState(false);
   const [selectedCardsForCopy, setSelectedCardsForCopy] = useState([]);
@@ -147,9 +164,14 @@ function FlashcardApp() {
   });
   const [selectedTagsForCard, setSelectedTagsForCard] = useState([]);
   const [filterByTags, setFilterByTags] = useState([]);
+  const [cardCategory, setCardCategory] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [showProgressDashboard, setShowProgressDashboard] = useState(false);
+  const [imageBlurLevel, setImageBlurLevel] = useState(10);
+  const [isImageBlurred, setIsImageBlurred] = useState(true);
   useEffect(() => {
     // Save to both localStorage (as backup) and IndexedDB (for more space)
     const saveData = async () => {
@@ -178,6 +200,14 @@ function FlashcardApp() {
   useEffect(() => {
     localStorage.setItem('availableTags', JSON.stringify(availableTags));
   }, [availableTags]);
+
+  useEffect(() => {
+    localStorage.setItem('flashcardCategories', JSON.stringify(availableCategories));
+  }, [availableCategories]);
+
+  useEffect(() => {
+    localStorage.setItem('flashcardCategories', JSON.stringify(availableCategories));
+  }, [availableCategories]);
 
   // Auto-update dark mode based on time of day (only if user hasn't manually toggled recently)
   useEffect(() => {
@@ -208,17 +238,36 @@ function FlashcardApp() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (currentView === 'study') {
-        if (e.key === 'ArrowLeft') prevCard();
-        else if (e.key === 'ArrowRight') nextCard();
-        else if (e.key === ' ') {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          prevCard();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          nextCard();
+        } else if (e.key === ' ') {
           e.preventDefault();
           setIsFlipped(!isFlipped);
+        } else if (e.key === '1' && isFlipped && currentCard && !markedCardsInSession.has(currentCard.id)) {
+          e.preventDefault();
+          markCorrect();
+        } else if (e.key === '2' && isFlipped && currentCard && !markedCardsInSession.has(currentCard.id)) {
+          e.preventDefault();
+          markIncorrect();
+        } else if ((e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          shuffleCards();
         }
+      }
+      // Global shortcut for dark mode
+      if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setDarkMode(!darkMode);
+        localStorage.setItem('lastManualDarkModeToggle', Date.now().toString());
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentView, currentCardIndex, isFlipped]);
+  }, [currentView, currentCardIndex, isFlipped, markedCardsInSession, currentCard, darkMode]);
 
   const createDeck = () => {
     if (!deckName.trim()) {
@@ -327,6 +376,11 @@ function FlashcardApp() {
       return;
     }
 
+    // Add category to available categories if it's new
+    if (cardCategory && !availableCategories.includes(cardCategory)) {
+      setAvailableCategories([...availableCategories, cardCategory]);
+    }
+
     const updatedDecks = decks.map(deck => {
       if (deck.id === currentDeckId) {
         if (editingCardId) {
@@ -341,6 +395,7 @@ function FlashcardApp() {
                     backText, 
                     frontImage, 
                     backImage,
+                    category: cardCategory || card.category || '',
                     stats: card.stats || { correct: 0, incorrect: 0 },
                     // Preserve spaced repetition data
                     repetitionData: card.repetitionData || {
@@ -361,6 +416,7 @@ function FlashcardApp() {
             backText,
             frontImage,
             backImage,
+            category: cardCategory || '',
             stats: { correct: 0, incorrect: 0 },
             repetitionData: {
               easeFactor: 2.5,
@@ -459,6 +515,7 @@ function FlashcardApp() {
     setEditingCardId(null);
     setFrontImageError(false);
     setBackImageError(false);
+    setCardCategory('');
   };
 
   const showStudy = (deckId) => {
@@ -1352,6 +1409,24 @@ function FlashcardApp() {
                                 borderTop: deck.sessions && deck.sessions.length > 0 ? 'none' : '1px solid #E0E0E0'
                               }}>📊 Clear Stats</button>
                             )}
+                            
+                            <button onClick={() => {
+                              if (window.confirm(`Delete "${deck.name}"?\n\nThis will permanently delete the deck and all its cards. This cannot be undone.`)) {
+                                deleteDeck(deck.id);
+                              }
+                              setShowDeckMenu(null);
+                            }} style={{
+                              width: '100%',
+                              padding: '12px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              color: '#FF4757',
+                              fontSize: '0.95rem',
+                              fontWeight: '700',
+                              borderTop: '1px solid #E0E0E0'
+                            }}>🗑️ Delete Deck</button>
                           </div>
                         )}
                       </div>
@@ -2160,6 +2235,18 @@ function FlashcardApp() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', clear: 'both' }}>
                 <h2>{currentDeck.name}</h2>
                 <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={() => setStartWithBack(!startWithBack)} style={{
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    border: `2px solid ${startWithBack ? '#FF6B6B' : '#4ECDC4'}`,
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: startWithBack ? '#FF6B6B' : '#4ECDC4',
+                    color: 'white',
+                    fontWeight: '600'
+                  }}>
+                    {startWithBack ? '🔄 Back → Front' : '🔄 Front → Back'}
+                  </button>
                   <button onClick={shuffleCards} style={{
                     padding: '8px 16px',
                     fontSize: '0.9rem',
@@ -2232,16 +2319,21 @@ function FlashcardApp() {
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     color: 'white'
                   }}>
-                    <div style={{ fontSize: '1.5rem', marginBottom: '20px', wordWrap: 'break-word', maxWidth: '100%' }}>
-                      {currentCard.frontText}
+                    <div style={{ 
+                      fontSize: '1.5rem', 
+                      wordWrap: 'break-word', 
+                      maxWidth: '100%',
+                      textAlign: 'center',
+                      marginBottom: (startWithBack ? currentCard.backImage : currentCard.frontImage) ? '20px' : '0'
+                    }}>
+                      {startWithBack ? currentCard.backText : currentCard.frontText}
                     </div>
-                    {currentCard.frontImage && (
-                      <img src={currentCard.frontImage} alt="Front" style={{
+                    {(startWithBack ? currentCard.backImage : currentCard.frontImage) && (
+                      <img src={startWithBack ? currentCard.backImage : currentCard.frontImage} alt="Card" style={{
                         maxWidth: '100%',
                         maxHeight: '250px',
                         borderRadius: '12px',
-                        objectFit: 'contain',
-                        marginTop: '20px'
+                        objectFit: 'contain'
                       }} />
                     )}
                   </div>
@@ -2263,16 +2355,21 @@ function FlashcardApp() {
                     color: 'white',
                     transform: 'rotateY(180deg)'
                   }}>
-                    <div style={{ fontSize: '1.5rem', marginBottom: '20px', wordWrap: 'break-word', maxWidth: '100%' }}>
-                      {currentCard.backText}
+                    <div style={{ 
+                      fontSize: '1.5rem', 
+                      wordWrap: 'break-word', 
+                      maxWidth: '100%',
+                      textAlign: 'center',
+                      marginBottom: (startWithBack ? currentCard.frontImage : currentCard.backImage) ? '20px' : '0'
+                    }}>
+                      {startWithBack ? currentCard.frontText : currentCard.backText}
                     </div>
-                    {currentCard.backImage && (
-                      <img src={currentCard.backImage} alt="Back" style={{
+                    {(startWithBack ? currentCard.frontImage : currentCard.backImage) && (
+                      <img src={startWithBack ? currentCard.frontImage : currentCard.backImage} alt="Card" style={{
                         maxWidth: '100%',
                         maxHeight: '250px',
                         borderRadius: '12px',
-                        objectFit: 'contain',
-                        marginTop: '20px'
+                        objectFit: 'contain'
                       }} />
                     )}
                   </div>
