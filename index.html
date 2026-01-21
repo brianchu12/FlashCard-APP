@@ -1,5 +1,28 @@
-import React, { useState, useEffect } from 'react';
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlashStudy - Smart Flashcard App</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:wght@700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'DM Sans', sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+const { useState, useEffect } = React;
 export default function FlashcardApp() {
   const [decks, setDecks] = useState(() => {
     const saved = localStorage.getItem('flashcardDecks');
@@ -2430,4 +2453,9 @@ export default function FlashcardApp() {
       `}</style>
     </div>
   );
-}
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<FlashcardApp />);
+  </script>
+</body>
+</html>
