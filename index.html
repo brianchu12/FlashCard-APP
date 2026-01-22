@@ -143,6 +143,7 @@ function FlashcardApp() {
   });
   const [showSidebar, setShowSidebar] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showDueCardsModal, setShowDueCardsModal] = useState(false);
   useEffect(() => {
     // Save to both localStorage (as backup) and IndexedDB (for more space)
     const saveData = async () => {
@@ -1160,32 +1161,62 @@ function FlashcardApp() {
                 </div>
                 {(() => {
                   const now = new Date();
-                  const dueCards = decks.reduce((sum, deck) => 
-                    sum + deck.cards.filter(card => {
+                  const dueCardsByDeck = decks.map(deck => ({
+                    deck,
+                    dueCards: deck.cards.filter(card => {
                       const reviewDate = new Date(card.repetitionData?.nextReviewDate);
-                      return reviewDate <= now;
-                    }).length, 0);
+                      return reviewDate <= now && !card.disabled;
+                    })
+                  })).filter(item => item.dueCards.length > 0);
+                  
+                  const totalDue = dueCardsByDeck.reduce((sum, item) => sum + item.dueCards.length, 0);
 
                   return (
-                    <div style={{
-                      background: dueCards > 0 
-                        ? (darkMode ? '#3f2a2a' : '#FFF3E0')
-                        : (darkMode ? '#2a3f5f' : '#E8F5E9'),
-                      borderRadius: '12px',
-                      padding: '16px',
-                      textAlign: 'center',
-                      border: dueCards > 0 ? '2px solid #FF6B6B' : 'none'
-                    }}>
+                    <div 
+                      onClick={() => totalDue > 0 && setShowDueCardsModal(true)}
+                      style={{
+                        background: totalDue > 0 
+                          ? (darkMode ? '#3f2a2a' : '#FFF3E0')
+                          : (darkMode ? '#2a3f5f' : '#E8F5E9'),
+                        borderRadius: '12px',
+                        padding: '16px',
+                        textAlign: 'center',
+                        border: totalDue > 0 ? '2px solid #FF6B6B' : 'none',
+                        cursor: totalDue > 0 ? 'pointer' : 'default',
+                        transition: 'all 0.3s ease',
+                        position: 'relative'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (totalDue > 0) {
+                          e.currentTarget.style.transform = 'scale(1.02)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 107, 107, 0.3)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
                       <div style={{ 
                         fontSize: '2.5rem', 
                         fontWeight: '700', 
-                        color: dueCards > 0 ? '#FF6B6B' : '#4ECDC4'
+                        color: totalDue > 0 ? '#FF6B6B' : '#4ECDC4'
                       }}>
-                        {dueCards}
+                        {totalDue}
                       </div>
                       <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
-                        {dueCards === 0 ? 'All caught up! 🎉' : 'Need review'}
+                        {totalDue === 0 ? 'All caught up! 🎉' : 'Need review'}
                       </div>
+                      {totalDue > 0 && (
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          marginTop: '8px',
+                          opacity: 0.7,
+                          fontStyle: 'italic'
+                        }}>
+                          Click to see details →
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -2974,6 +3005,111 @@ function FlashcardApp() {
                 fontWeight: '600'
               }}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Due Cards Modal */}
+      {showDueCardsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowDueCardsModal(false)}>
+          <div style={{
+            background: darkMode ? '#16213e' : 'white',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            color: darkMode ? '#e0e0e0' : '#1A1A2E'
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: '20px', color: '#FF6B6B' }}>🔄 Cards Due for Review</h3>
+            {(() => {
+              const now = new Date();
+              const dueCardsByDeck = decks.map(deck => ({
+                deck,
+                dueCards: deck.cards.filter(card => {
+                  const reviewDate = new Date(card.repetitionData?.nextReviewDate);
+                  return reviewDate <= now && !card.disabled;
+                })
+              })).filter(item => item.dueCards.length > 0);
+
+              return (
+                <div>
+                  {dueCardsByDeck.map(({ deck, dueCards }) => (
+                    <div key={deck.id} style={{ 
+                      marginBottom: '24px',
+                      background: darkMode ? '#1e2a3a' : '#f8f9fa',
+                      borderRadius: '12px',
+                      padding: '16px'
+                    }}>
+                      <div style={{ 
+                        fontWeight: '600', 
+                        color: darkMode ? '#4ECDC4' : '#667eea',
+                        marginBottom: '12px',
+                        fontSize: '1.1rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <span>{deck.name}</span>
+                        <span style={{ 
+                          fontSize: '0.9rem',
+                          background: '#FF6B6B',
+                          color: 'white',
+                          padding: '4px 12px',
+                          borderRadius: '12px'
+                        }}>
+                          {dueCards.length} due
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {dueCards.map(card => (
+                          <div key={card.id} style={{
+                            padding: '8px 12px',
+                            background: darkMode ? '#2a3f5f' : 'white',
+                            borderRadius: '8px',
+                            fontSize: '0.9rem',
+                            border: darkMode ? '1px solid #3a4f6f' : '1px solid #e0e0e0'
+                          }}>
+                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                              {card.frontText || '(Image card)'}
+                            </div>
+                            <div style={{ 
+                              fontSize: '0.8rem', 
+                              opacity: 0.7 
+                            }}>
+                              → {card.backText || '(Image card)'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <button onClick={() => setShowDueCardsModal(false)} style={{
+              padding: '12px 24px',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: '#4ECDC4',
+              color: 'white',
+              fontWeight: '600',
+              width: '100%',
+              marginTop: '12px'
+            }}>Close</button>
           </div>
         </div>
       )}
