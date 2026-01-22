@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>FlashStudy - Smart Flashcard App</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -250,6 +253,23 @@ function FlashcardApp() {
     }
   };
 
+  const toggleCardDisabled = (cardId) => {
+    const updatedDecks = decks.map(deck => {
+      if (deck.id === currentDeckId) {
+        return {
+          ...deck,
+          cards: deck.cards.map(card =>
+            card.id === cardId
+              ? { ...card, disabled: !card.disabled }
+              : card
+          )
+        };
+      }
+      return deck;
+    });
+    setDecks(updatedDecks);
+  };
+
   const handlePasteEvent = (e, side) => {
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
@@ -367,6 +387,7 @@ function FlashcardApp() {
             frontImage,
             backImage,
             stats: { correct: 0, incorrect: 0 },
+            disabled: false,
             repetitionData: {
               easeFactor: 2.5,
               interval: 0,
@@ -469,13 +490,17 @@ function FlashcardApp() {
 
   const showStudy = (deckId) => {
     const deck = decks.find(d => d.id === deckId);
-    if (!deck.cards || deck.cards.length === 0) {
-      alert('This deck has no cards yet! Add some cards first.');
+    
+    // Filter out disabled cards
+    const enabledCards = deck.cards.filter(card => !card.disabled);
+    
+    if (!enabledCards || enabledCards.length === 0) {
+      alert('This deck has no enabled cards! Enable some cards first or add new ones.');
       return;
     }
 
     // Sort cards by spaced repetition - cards due for review first
-    const sortedCards = [...deck.cards].sort((a, b) => {
+    const sortedCards = [...enabledCards].sort((a, b) => {
       const aDate = new Date(a.repetitionData?.nextReviewDate || new Date());
       const bDate = new Date(b.repetitionData?.nextReviewDate || new Date());
       const now = new Date();
@@ -631,14 +656,14 @@ function FlashcardApp() {
         shuffleCards();
       }, 1500);
     } else {
-      // Move to next card with delay so user sees the answer briefly
-      setTimeout(() => {
-        setCurrentCardIndex(currentCardIndex + 1);
-      }, 800);
-      // Delay the flip back slightly longer
+      // First flip the card back (takes 400ms)
       setTimeout(() => {
         setIsFlipped(false);
-      }, 1200);
+      }, 200);
+      // Then advance to next card after flip completes
+      setTimeout(() => {
+        setCurrentCardIndex(currentCardIndex + 1);
+      }, 600); // 200ms delay + 400ms flip animation
     }
   };
 
@@ -717,14 +742,14 @@ function FlashcardApp() {
         shuffleCards();
       }, 1500);
     } else {
-      // Move to next card with delay so user sees the answer briefly
-      setTimeout(() => {
-        setCurrentCardIndex(currentCardIndex + 1);
-      }, 800);
-      // Delay the flip back slightly longer
+      // First flip the card back (takes 400ms)
       setTimeout(() => {
         setIsFlipped(false);
-      }, 1200);
+      }, 200);
+      // Then advance to next card after flip completes
+      setTimeout(() => {
+        setCurrentCardIndex(currentCardIndex + 1);
+      }, 600); // 200ms delay + 400ms flip animation
     }
   };
 
@@ -1417,16 +1442,6 @@ function FlashcardApp() {
                           color: '#1A1A2E',
                           fontWeight: '600'
                         }}>Edit Cards</button>
-                        <button onClick={() => deleteDeck(deck.id)} style={{
-                          padding: '8px 16px',
-                          fontSize: '0.9rem',
-                          border: 'none',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          background: '#FF4757',
-                          color: 'white',
-                          fontWeight: '600'
-                        }}>Delete</button>
                       </div>
                     </div>
                   ))}
@@ -2073,6 +2088,19 @@ function FlashcardApp() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '8px' }}>
+                            <button onClick={() => toggleCardDisabled(card.id)} style={{
+                              padding: '8px 16px',
+                              fontSize: '0.9rem',
+                              border: `2px solid ${card.disabled ? '#FF6B6B' : '#4ECDC4'}`,
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              background: card.disabled ? 'rgba(255, 107, 107, 0.1)' : 'rgba(78, 205, 196, 0.1)',
+                              color: card.disabled ? '#FF6B6B' : '#4ECDC4',
+                              fontWeight: '600',
+                              opacity: card.disabled ? 0.6 : 1
+                            }}>
+                              {card.disabled ? '❌ Disabled' : '✓ Enabled'}
+                            </button>
                             <button onClick={() => editCard(card)} style={{
                               padding: '8px 16px',
                               fontSize: '0.9rem',
@@ -2254,8 +2282,9 @@ function FlashcardApp() {
                     position: 'relative',
                     width: '100%',
                     height: '100%',
-                    transition: 'transform 0.6s',
+                    transition: 'transform 0.4s',
                     transformStyle: 'preserve-3d',
+                    transformOrigin: 'center center',
                     cursor: 'pointer',
                     transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0)'
                   }}
@@ -2276,7 +2305,9 @@ function FlashcardApp() {
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     color: 'white',
                     boxSizing: 'border-box',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    opacity: isFlipped ? 0 : 1,
+                    transition: 'opacity 0.2s'
                   }}>
                     <div style={{ 
                       fontSize: '1.5rem', 
@@ -2314,7 +2345,9 @@ function FlashcardApp() {
                     color: 'white',
                     transform: 'rotateY(180deg)',
                     boxSizing: 'border-box',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    opacity: !isFlipped ? 0 : 1,
+                    transition: 'opacity 0.2s'
                   }}>
                     <div style={{ 
                       fontSize: '1.5rem', 
@@ -2361,24 +2394,17 @@ function FlashcardApp() {
               <div style={{ 
                 textAlign: 'center',
                 marginTop: '12px',
-                padding: '16px',
+                padding: '8px 12px',
                 background: darkMode ? 'rgba(255, 230, 109, 0.1)' : 'rgba(255, 230, 109, 0.2)',
-                borderRadius: '8px'
+                borderRadius: '6px'
               }}>
                 <p style={{ 
-                  color: darkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)', 
-                  marginBottom: '8px', 
-                  fontSize: '0.9rem',
-                  fontWeight: '600'
-                }}>
-                  ⌨️ Keyboard Shortcuts
-                </p>
-                <p style={{ 
                   color: darkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)', 
-                  fontSize: '0.85rem',
-                  lineHeight: '1.6'
+                  fontSize: '0.75rem',
+                  margin: 0,
+                  lineHeight: '1.4'
                 }}>
-                  <strong>Space:</strong> Flip card • <strong>←/→:</strong> Navigate • <strong>1:</strong> Got it • <strong>2:</strong> Missed • <strong>Ctrl+S:</strong> Shuffle
+                  ⌨️ <strong>Space:</strong> Flip • <strong>←/→:</strong> Navigate • <strong>1:</strong> Got it • <strong>2:</strong> Missed
                 </p>
               </div>
 
