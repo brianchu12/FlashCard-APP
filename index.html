@@ -144,6 +144,7 @@ function FlashcardApp() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showDueCardsModal, setShowDueCardsModal] = useState(false);
+  const [activeStudyCards, setActiveStudyCards] = useState([]);
   useEffect(() => {
     // Save to both localStorage (as backup) and IndexedDB (for more space)
     const saveData = async () => {
@@ -517,15 +518,8 @@ function FlashcardApp() {
       return aDate - bDate;
     });
 
-    // Update deck with sorted cards
-    const updatedDecks = decks.map(d => {
-      if (d.id === deckId) {
-        return { ...d, cards: sortedCards };
-      }
-      return d;
-    });
-    setDecks(updatedDecks);
-
+    // Store sorted enabled cards for study session
+    setActiveStudyCards(sortedCards);
     setCurrentDeckId(deckId);
     setCurrentCardIndex(0);
     setIsFlipped(false);
@@ -557,8 +551,8 @@ function FlashcardApp() {
   };
 
   const nextCard = () => {
-    const deck = decks.find(d => d.id === currentDeckId);
-    if (currentCardIndex < deck.cards.length - 1) {
+    const cardsLength = currentView === 'study' ? activeStudyCards.length : (currentDeck?.cards?.length || 0);
+    if (currentCardIndex < cardsLength - 1) {
       setCurrentCardIndex(currentCardIndex + 1);
       setIsFlipped(false);
     }
@@ -929,7 +923,9 @@ function FlashcardApp() {
   };
 
   const currentDeck = currentDeckId ? decks.find(d => d.id === currentDeckId) : null;
-  const currentCard = currentDeck && currentDeck.cards && currentDeck.cards[currentCardIndex] ? currentDeck.cards[currentCardIndex] : null;
+  const currentCard = currentView === 'study' && activeStudyCards.length > 0
+    ? activeStudyCards[currentCardIndex]
+    : (currentDeck && currentDeck.cards && currentDeck.cards[currentCardIndex] ? currentDeck.cards[currentCardIndex] : null);
 
   return (
     <div style={{
@@ -2292,7 +2288,7 @@ function FlashcardApp() {
               </div>
 
               <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '10px' }}>
-                Card {currentCardIndex + 1} of {currentDeck.cards.length}
+                Card {currentCardIndex + 1} of {activeStudyCards.length}
               </div>
 
               <div style={{ 
