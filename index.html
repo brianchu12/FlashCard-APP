@@ -616,15 +616,25 @@ function FlashcardApp() {
   const nextCard = () => {
     const cardsLength = currentView === 'study' ? activeStudyCards.length : (currentDeck?.cards?.length || 0);
     if (currentCardIndex < cardsLength - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-      setIsFlipped(false);
+      // Animate card swipe to the right
+      setCardSwipeDirection('right');
+      setTimeout(() => {
+        setCardSwipeDirection(null);
+        setCurrentCardIndex(currentCardIndex + 1);
+        setIsFlipped(false);
+      }, 300);
     }
   };
 
   const prevCard = () => {
     if (currentCardIndex > 0) {
-      setCurrentCardIndex(currentCardIndex - 1);
-      setIsFlipped(false);
+      // Animate card swipe to the left
+      setCardSwipeDirection('left');
+      setTimeout(() => {
+        setCardSwipeDirection(null);
+        setCurrentCardIndex(currentCardIndex - 1);
+        setIsFlipped(false);
+      }, 300);
     }
   };
 
