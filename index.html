@@ -639,8 +639,9 @@ function FlashcardApp() {
   };
 
   const markCorrect = () => {
-    const deck = decks.find(d => d.id === currentDeckId);
-    const currentCard = deck.cards[currentCardIndex];
+    // Get the current card from activeStudyCards (what's actually displayed)
+    const currentCard = activeStudyCards[currentCardIndex];
+    if (!currentCard) return;
     
     // Check if this specific card has been marked in this session
     if (markedCardsInSession.has(currentCard.id)) return;
@@ -692,8 +693,8 @@ function FlashcardApp() {
       if (d.id === currentDeckId) {
         return {
           ...d,
-          cards: d.cards.map((card, idx) => {
-            if (idx === currentCardIndex) {
+          cards: d.cards.map((card) => {
+            if (card.id === currentCard.id) {
               return {
                 ...card,
                 stats: {
@@ -759,8 +760,9 @@ function FlashcardApp() {
   };
 
   const markIncorrect = () => {
-    const deck = decks.find(d => d.id === currentDeckId);
-    const currentCard = deck.cards[currentCardIndex];
+    // Get the current card from activeStudyCards (what's actually displayed)
+    const currentCard = activeStudyCards[currentCardIndex];
+    if (!currentCard) return;
     
     // Check if this specific card has been marked in this session
     if (markedCardsInSession.has(currentCard.id)) return;
@@ -801,8 +803,8 @@ function FlashcardApp() {
       if (d.id === currentDeckId) {
         return {
           ...d,
-          cards: d.cards.map((card, idx) => {
-            if (idx === currentCardIndex) {
+          cards: d.cards.map((card) => {
+            if (card.id === currentCard.id) {
               return {
                 ...card,
                 stats: {
