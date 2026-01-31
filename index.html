@@ -242,7 +242,7 @@ function FlashcardApp() {
       return;
     }
     const newDeck = {
-      id: Date.now(),
+      id: Date.now() + Math.random(), // Ensure unique ID
       name: deckName,
       description: deckDescription,
       cards: [],
@@ -389,7 +389,7 @@ function FlashcardApp() {
         } else {
           // Add new card with spaced repetition data
           const newCard = {
-            id: Date.now(),
+            id: Date.now() + Math.random(), // Ensure unique ID
             frontText,
             backText,
             frontImage,
@@ -850,7 +850,7 @@ function FlashcardApp() {
 
   const saveSession = (sessionData) => {
     const session = {
-      id: Date.now(),
+      id: Date.now() + Math.random(), // Ensure unique ID
       date: new Date().toISOString(),
       cardData: sessionData
     };
@@ -2460,6 +2460,32 @@ function FlashcardApp() {
                   ✗ {studyStats.incorrect} Incorrect
                 </span>
               </div>
+
+              {/* Already Answered Indicator */}
+              {markedCardsInSession.has(currentCard?.id) && (
+                <div style={{
+                  textAlign: 'center',
+                  marginBottom: '-20px',
+                  position: 'relative',
+                  zIndex: 10
+                }}>
+                  <div style={{
+                    display: 'inline-block',
+                    padding: '8px 20px',
+                    background: currentSessionData[currentCard?.id]?.correct > 0 
+                      ? 'linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%)'
+                      : 'linear-gradient(135deg, #FF6B6B 0%, #C74040 100%)',
+                    color: 'white',
+                    borderRadius: '20px',
+                    fontWeight: '600',
+                    fontSize: '0.9rem',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                    animation: 'fadeInDown 0.3s ease-out'
+                  }}>
+                    {currentSessionData[currentCard?.id]?.correct > 0 ? '✓ Already Marked Correct' : '✗ Already Marked Incorrect'}
+                  </div>
+                </div>
+              )}
 
               {/* Flashcard */}
               <div style={{ perspective: '1000px', margin: '40px auto', maxWidth: '700px', height: '450px' }}>
