@@ -778,14 +778,14 @@ function FlashcardApp() {
         setShowFinishSessionModal(true);
       }, 800);
     } else {
-      // First flip the card back (takes 400ms)
-      setTimeout(() => {
-        setIsFlipped(false);
-      }, 200);
-      // Then advance to next card after flip completes
+      // Advance to next card while still flipped
       setTimeout(() => {
         setCurrentCardIndex(currentCardIndex + 1);
-      }, 600); // 200ms delay + 400ms flip animation
+      }, 200);
+      // Then flip the new card to front
+      setTimeout(() => {
+        setIsFlipped(false);
+      }, 600); // Advance first, then flip
     }
   };
 
@@ -876,14 +876,14 @@ function FlashcardApp() {
         setShowFinishSessionModal(true);
       }, 800);
     } else {
-      // First flip the card back (takes 400ms)
-      setTimeout(() => {
-        setIsFlipped(false);
-      }, 200);
-      // Then advance to next card after flip completes
+      // Advance to next card while still flipped
       setTimeout(() => {
         setCurrentCardIndex(currentCardIndex + 1);
-      }, 600); // 200ms delay + 400ms flip animation
+      }, 200);
+      // Then flip the new card to front
+      setTimeout(() => {
+        setIsFlipped(false);
+      }, 600); // Advance first, then flip
     }
   };
 
@@ -2566,7 +2566,7 @@ function FlashcardApp() {
                     boxSizing: 'border-box',
                     overflow: 'hidden',
                     opacity: isFlipped ? 0 : 1,
-                    transition: 'opacity 0.2s'
+                    transition: 'opacity 0.1s'
                   }}>
                     <div style={{ 
                       fontSize: '1.5rem', 
