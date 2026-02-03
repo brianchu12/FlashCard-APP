@@ -149,6 +149,7 @@ function FlashcardApp() {
   const [selectedDecksForCombine, setSelectedDecksForCombine] = useState([]);
   const [showConfetti, setShowConfetti] = useState(false);
   const [cardSwipeDirection, setCardSwipeDirection] = useState(null); // 'left' or 'right'
+  const [lastSessionMissedCards, setLastSessionMissedCards] = useState([]);
   const [showCombinedStudyModal, setShowCombinedStudyModal] = useState(false);
   const [selectedDecksForStudy, setSelectedDecksForStudy] = useState([]);
   useEffect(() => {
@@ -563,18 +564,14 @@ function FlashcardApp() {
   };
 
   const reviewMissedCards = () => {
-    // Get only the cards marked incorrect in this session
-    const missedCards = activeStudyCards.filter(card => 
-      currentSessionData[card.id]?.incorrect > 0
-    );
-
-    if (missedCards.length === 0) {
+    // Use the cards that were missed in the last session
+    if (lastSessionMissedCards.length === 0) {
       alert('No missed cards to review! You got them all correct! 🎉');
       return;
     }
 
     // Set up study session with only missed cards
-    setActiveStudyCards(missedCards);
+    setActiveStudyCards(lastSessionMissedCards);
     setCurrentCardIndex(0);
     setIsFlipped(false);
     setMarkedCardsInSession(new Set()); // Clear marks for fresh review
@@ -582,7 +579,7 @@ function FlashcardApp() {
 
     // Initialize session data for missed cards
     const sessionData = {};
-    missedCards.forEach(card => {
+    lastSessionMissedCards.forEach(card => {
       sessionData[card.id] = { correct: 0, incorrect: 0 };
     });
     setCurrentSessionData(sessionData);
@@ -770,6 +767,13 @@ function FlashcardApp() {
     if (currentCardIndex >= activeStudyCards.length - 1) {
       // Last card - save session and show completion modal
       saveSession(updatedSessionData);
+      
+      // Store which cards were missed in this session for review
+      const missedCards = activeStudyCards.filter(card => 
+        updatedSessionData[card.id]?.incorrect > 0
+      );
+      setLastSessionMissedCards(missedCards);
+      
       setTimeout(() => {
         setShowFinishSessionModal(true);
       }, 800);
@@ -861,6 +865,13 @@ function FlashcardApp() {
     if (currentCardIndex >= activeStudyCards.length - 1) {
       // Last card - save session and show completion modal
       saveSession(updatedSessionData);
+      
+      // Store which cards were missed in this session for review
+      const missedCards = activeStudyCards.filter(card => 
+        updatedSessionData[card.id]?.incorrect > 0
+      );
+      setLastSessionMissedCards(missedCards);
+      
       setTimeout(() => {
         setShowFinishSessionModal(true);
       }, 800);
@@ -2833,7 +2844,7 @@ function FlashcardApp() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {studyStats.incorrect > 0 && (
+                  {lastSessionMissedCards.length > 0 && (
                     <button onClick={() => {
                       setShowFinishSessionModal(false);
                       reviewMissedCards();
@@ -2847,7 +2858,7 @@ function FlashcardApp() {
                       color: 'white',
                       fontWeight: '600',
                       fontSize: '1rem'
-                    }}>🔁 Review {studyStats.incorrect} Missed Card{studyStats.incorrect !== 1 ? 's' : ''}</button>
+                    }}>🔁 Review {lastSessionMissedCards.length} Missed Card{lastSessionMissedCards.length !== 1 ? 's' : ''}</button>
                   )}
                   <div style={{ display: 'flex', gap: '12px' }}>
                     <button onClick={() => {
