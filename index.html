@@ -778,14 +778,9 @@ function FlashcardApp() {
         setShowFinishSessionModal(true);
       }, 800);
     } else {
-      // Advance to next card while still flipped
-      setTimeout(() => {
-        setCurrentCardIndex(currentCardIndex + 1);
-      }, 200);
-      // Then flip the new card to front
-      setTimeout(() => {
-        setIsFlipped(false);
-      }, 600); // Advance first, then flip
+      // Advance to next card and show it front-up immediately
+      setCurrentCardIndex(currentCardIndex + 1);
+      setIsFlipped(false); // Set to front immediately, no flip delay
     }
   };
 
@@ -876,14 +871,9 @@ function FlashcardApp() {
         setShowFinishSessionModal(true);
       }, 800);
     } else {
-      // Advance to next card while still flipped
-      setTimeout(() => {
-        setCurrentCardIndex(currentCardIndex + 1);
-      }, 200);
-      // Then flip the new card to front
-      setTimeout(() => {
-        setIsFlipped(false);
-      }, 600); // Advance first, then flip
+      // Advance to next card and show it front-up immediately
+      setCurrentCardIndex(currentCardIndex + 1);
+      setIsFlipped(false); // Set to front immediately, no flip delay
     }
   };
 
